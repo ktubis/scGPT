@@ -12,7 +12,7 @@ class Katya:
 
 class PancreaticDataset:
 
-    DATASET_PATH = "/local/home/ktubis/PycharmProjects/scGPT/delta_tuning/data/scRNAseq_Benchmark_datasets/Intra-dataset/Pancreatic_data/"
+    DATASET_PATH = "../delta_tuning/data/scRNAseq_Benchmark_datasets/Intra-dataset/Pancreatic_data/"
 
     class SupportedDatasets(Enum):
         BARON = "Baron_Human"
@@ -29,12 +29,16 @@ class PancreaticDataset:
         """
         self.data_dir = Path(PancreaticDataset.DATASET_PATH)
         self.curr_batch_id = 0
+        self.dataset_batch_dict = {}    # a dict that maps dataset name to batch id
+        self.adata = None
+        self.id2type = None
+        self._load_all_datasets()
 
     def _get_curr_batch_id(self):
         """
         Get the current batch ID, and increase the counter by 1.
         """
-        batch_id = str(self.curr_batch_id)
+        batch_id = self.curr_batch_id
         self.curr_batch_id += 1
         return batch_id
 
@@ -90,7 +94,7 @@ class PancreaticDataset:
         return adata
     
 
-    def load_all_datasets(self):
+    def _load_all_datasets(self):
         """
         Load and preprocess all supported datasets, and combine them into a single AnnData object.
         The datasets are filtered to keep only common genes across all datasets.
@@ -98,24 +102,59 @@ class PancreaticDataset:
             combined_adata (AnnData): The combined AnnData object with common genes.
             combined_id2type (dict): Mapping from cell type IDs to cell type names for the combined dataset.
         """
-        combined_adata = None
         adata_list = []
 
         for dataset in self.SupportedDatasets:
-            # Load and preprocess the dataset
+            self.dataset_batch_dict[dataset.value] = self.curr_batch_id
             adata  = self._preprocess_data(dataset)
             adata_list.append(adata)
         
-        combined_adata = ad.concat(adata_list, join="inner")
-        """
-        # Filter combined_adata to keep only common genes
-        if combined_adata is not None and common_genes is not None:
-            combined_adata = combined_adata[:, list(common_genes)]"""
+        self.adata = ad.concat(adata_list, join="inner")
 
         # Create id2type mapping for the combined dataset
-        combined_id2type = dict(enumerate(combined_adata.obs["celltype"].astype("category").cat.categories))
+        self.id2type = dict(enumerate(self.adata.obs["celltype"].astype("category").cat.categories))
 
-        return combined_adata, combined_id2type
+    
+    def get_train_test(self, test_ds_name):
+        """
+        Split the dataset into training and testing sets based on the dataset name.
+
+        Args:
+            ds_name (str): The name of the dataset to split.
+
+        Returns:
+            adata_train (AnnData): The training set AnnData object.
+            adata_test (AnnData): The testing set AnnData object.
+        """
+
+        if test_ds_name not in self.dataset_batch_dict:
+            raise ValueError(f"Dataset {test_ds_name} not found in the dataset batch dictionary.")
+        
+        batch_id = self.dataset_batch_dict[test_ds_name]
+        # Split the dataset into training and testing sets
+        adata_test = self.adata[self.adata.obs["batch_id"] == batch_id].copy()
+        adata_train = self.adata[self.adata.obs["batch_id"] != batch_id].copy()
+
+        return adata_train, adata_test
+    
+    def get_num_celltypes(self):
+        """
+        Get the number of unique cell types in the dataset.
+
+        Returns:
+            int: The number of unique cell types.
+        """
+        return len(self.adata.obs["celltype"].cat.categories)
+    
+
+    def get_num_batches(self):
+        """
+        Get the number of unique batches in the dataset.
+        Returns:
+            int: The number of unique batches.
+        """
+        return len(self.adata.obs["batch_id"].unique())
+
 
 ## %%
 if __name__ == "__main__":

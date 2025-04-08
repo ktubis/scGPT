@@ -14,6 +14,6 @@ formatter = logging.Formatter(
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
-from .databank import DataBank
-from .data import *
-from .setting import Setting
+#from .databank import DataBank
+#from .data import *
+#from .setting import Setting

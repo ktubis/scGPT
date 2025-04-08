@@ -77,6 +77,14 @@ class Preprocessor:
         self.binning = binning
         self.result_binned_key = result_binned_key
 
+    """
+    Katya:
+    What they do is they divide the non-zero values of each row (cell) into 50 percentiles. 
+    What happens is that if, for example, 50% of the genes have the lowest value (1), then the first 25 bins will be
+    the same. Then, when they want to put a value into a bin, they choose randomly between all possible bins. 
+    The result is that a single gene can be randomly binned in 20 different bins if it's value is 1 in a cell, while
+    if the genes in another cell are more uniformly distributed, their binning can be more meaningful at lower bins.
+    """
     def __call__(self, adata: AnnData, batch_key: Optional[str] = None) -> Dict:
         """
         format controls the different input value wrapping, including categorical

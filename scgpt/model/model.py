@@ -10,6 +10,7 @@ import torch.nn.functional as F
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from torch.distributions import Bernoulli
 from tqdm import trange
+import json
 
 try:
     from flash_attn.flash_attention import FlashMHA
@@ -158,6 +159,7 @@ class TransformerModel(nn.Module):
         self.creterion_cce = nn.CrossEntropyLoss()
 
         self.init_weights()
+
 
     def init_weights(self) -> None:
         initrange = 0.1
@@ -710,6 +712,7 @@ class FlashTransformerEncoderLayer(nn.Module):
             src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))
             src = src + self.dropout2(src2)
         else:
+            print(src.dtype)
             src2 = self.self_attn(src, key_padding_mask=src_key_padding_mask_)[0]
             src = src + self.dropout1(src2)
             src = self.norm1(src)

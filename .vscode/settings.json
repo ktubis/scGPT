@@ -4,5 +4,7 @@
     "**/__pycache__/**": true,
     "**/save/**": true,
     "**/wandb/**": true
-  }
+  },
+  "python.pythonPath": "/local/home/ktubis/anaconda3/envs/katyaenv/bin/python",
+  "python.defaultInterpreterPath": "/local/home/ktubis/anaconda3/envs/katyaenv/bin/python"
 }
