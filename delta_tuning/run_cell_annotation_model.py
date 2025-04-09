@@ -59,6 +59,7 @@ def preprocess_data(adata, preprocessor, vocab):
 def main():
     parser = argparse.ArgumentParser(description="Cell Annotation Model")
     parser.add_argument("--model_config_path", type=str, required=True, help="Path to the model config file")
+    parser.add_argument("--model", type=str, default=None, help="Path to the pretrained model to load. Must match the model config file. If None, will initialize a new model.")
     parser.add_argument("--results_file", type=str, required=True, help="Path to the file in which to save the results")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--test_data", type=str, default="Muraro", help="Which dataset to use as the test data")
@@ -96,6 +97,7 @@ def main():
     num_batches = ds_loader.get_num_batches()
 
     cam = CellAnnotationModelWrapper(
+        model_path=args.model,
         pad_value=config_dict["pad_value"],
         vocab=vocab,
         config_dict=config_dict,

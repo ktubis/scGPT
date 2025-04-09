@@ -1,0 +1,17 @@
+{
+    "pad_token": "<pad>",
+    "input_emb_style": "continuous",
+    "n_input_bins": 51,
+    "use_fast_transformer": true,
+    "nlayers": 12,
+    "nhead": 8,
+    "d_model": 512,
+    "d_hid": 512,
+    "dropout": 0.2,
+    "nlayers_cls": 3,
+    "pad_value": -2,
+    "do_mvc": true,
+    "cell_emb_style": "cls",
+    "ecs_threshold": 0.0,
+    "fast_transformer_backend": "flash"
+  }
