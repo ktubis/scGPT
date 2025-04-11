@@ -1,5 +1,5 @@
 {
-    "name": "Existing Dockerfile",
+    "name": "scgpt",
     "build": {
         // Sets the run context to one level up instead of the .devcontainer folder.
         "context": "..",
@@ -12,6 +12,7 @@
     "--gpus",
     "all"
 ],
+    "workspaceMount": "source=${localWorkspaceFolder},target=/scgpt,type=bind,consistency=cached",
     "workspaceFolder": "/scgpt",
     // Features to add to the dev container. More info: https://containers.dev/features.
     // "features": {},    // Use 'forwardPorts' to make a list of ports inside the container available locally.

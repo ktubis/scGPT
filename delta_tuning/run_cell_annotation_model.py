@@ -64,8 +64,11 @@ def main():
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--test_data", type=str, default="Muraro", help="Which dataset to use as the test data")
     parser.add_argument("--test_batch_size", type=int, default=32, help="Batch size for testing")
-    parser.add_argument("--test_max_seq_len", type=int, default=301, help="Maximum sequence length for testing")
-    parser.add_argument("--log_file", type=str, default="log.txt", help="Path to the log file")
+    parser.add_argument("--max_seq_len", type=int, default=301, help="Maximum sequence length")
+    parser.add_argument("--log_file", type=str, default="log.txt", help="Name of the log file")
+    parser.add_argument("--train", type=bool, default=False, help="Whether to train the model or not")
+    parser.add_argument("--epochs", type=int, default=10, help="Number of epochs to train the model")
+    parser.add_argument("--model_name", type=str, default="awesome_model", help="The name of the model to be saved")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -98,14 +101,21 @@ def main():
 
     cam = CellAnnotationModelWrapper(
         model_path=args.model,
+        max_seq_len=args.max_seq_len,
         pad_value=config_dict["pad_value"],
         vocab=vocab,
         config_dict=config_dict,
         num_batches=num_batches,
         num_celltypes=num_celltypes,
+        model_name=args.model_name,
     )
-    predictions, celltypes_labels, results = cam.test(adata_test, max_seq_len=args.test_max_seq_len, 
-                                                      eval_batch_size=args.test_batch_size)
+
+    print(cam.model)
+
+    if args.train:
+        cam.train(args.epochs, adata_train)
+    
+    predictions, celltypes_labels, results = cam.test(adata_test, eval_batch_size=args.test_batch_size)
     
     results_file = Path(args.results_file)
     if not results_file.exists():

@@ -9,17 +9,29 @@ from typing import Dict, Tuple
 import json
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import time
+import warnings
+import copy
+from sklearn.model_selection import train_test_split
+from datetime import datetime
 
 sys.path.insert(0, "../")
 from scgpt.tokenizer import tokenize_and_pad_batch, random_mask_value
 from scgpt.model import TransformerModel
-from sklearn.model_selection import train_test_split
+import scgpt
 
 
 INPUT_LAYER = "X_binned"
 MASK_RATIO = 0.0
 CLS = True
 MASK_VALUE = -1
+LR = 1e-4
+SCHEDULE_INTERVAL = 100
+EPS = 1e-8
+SCHEDULE_RATIO = 0.9
+BATCH_SIZE = 32
+EVAL_BATCH_SIZE = 64
+LOG_INTERVAL = 100
+RETRAINED_MODELS_DIR = "retrained_models/"
 
 
 
@@ -35,10 +47,33 @@ class SeqDataset(Dataset):
         return {k: v[idx] for k, v in self.data.items()}
     
 
+def prepare_dataloader(
+    data_pt: Dict[str, torch.Tensor],
+    batch_size: int,
+    shuffle: bool = False,
+    drop_last: bool = False,
+    num_workers: int = 0,
+) -> DataLoader:
+    if num_workers == 0:
+        num_workers = min(len(os.sched_getaffinity(0)), batch_size // 2)
+
+    dataset = SeqDataset(data_pt)
+
+    data_loader = DataLoader(
+        dataset=dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        drop_last=drop_last,
+        num_workers=num_workers,
+        pin_memory=True,
+    )
+    return data_loader
+    
+
 class CellAnnotationModelWrapper():
 
-    def __init__(self, model_path, pad_value, vocab, config_dict, num_batches, num_celltypes,
-                 mask_value=MASK_VALUE, mask_ratio=MASK_RATIO):
+    def __init__(self, model_path, pad_value, vocab, config_dict, num_batches, num_celltypes, max_seq_len, log_dir="cell_annotation_logs/",
+                 mask_value=MASK_VALUE, mask_ratio=MASK_RATIO, model_name="awesome_model"):
         
         self.model = TransformerModel(ntoken=len(vocab), 
                             num_batch_labels=num_batches,
@@ -55,6 +90,24 @@ class CellAnnotationModelWrapper():
         self.pad_value = pad_value
         self.pad_token = config_dict["pad_token"]
         self.criterion = nn.CrossEntropyLoss()
+        self.lr = LR
+        self.schedule_interval = SCHEDULE_INTERVAL
+        self.eps = EPS
+        self.schedule_ratio = SCHEDULE_RATIO
+        self.batch_size = BATCH_SIZE
+        self.eval_batch_size = EVAL_BATCH_SIZE
+        self.log_interval = LOG_INTERVAL
+        self.logger = scgpt.logger
+        scgpt.utils.add_file_handler(self.logger, log_dir + "run.log")
+        self.max_seq_len = max_seq_len
+        self.model_name = model_name
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model.to(self.device)
+
+        # Get the current date and time, format as 'yymmddhhmm'
+        formatted_time = datetime.now().strftime('%y%m%d%H%M')
+        self.model_name += f"_{formatted_time}"
+
 
     def load_model(self, model_path):
         try:
@@ -78,10 +131,11 @@ class CellAnnotationModelWrapper():
 
     def _prepare_data_for_train(self, train_data, valid_data,
                      train_batch_labels, valid_batch_labels,
-                     train_celltype_labels, valid_celltype_labels) -> Tuple[Dict[str, torch.Tensor]]:
-
-        genes = train_data.var.index.tolist()
-        gene_ids = np.array(self.vocab(genes), dtype=int)
+                     train_celltype_labels, valid_celltype_labels,
+                     gene_ids) -> Tuple[Dict[str, torch.Tensor]]:
+        
+        print(train_data.shape)
+        print(train_data)
 
         tokenized_train = tokenize_and_pad_batch(
             train_data,
@@ -107,7 +161,22 @@ class CellAnnotationModelWrapper():
             tokenized_train["genes"],
             tokenized_valid["genes"],
         )
-        input_values_train, input_values_valid = tokenized_train, tokenized_valid
+
+        masked_values_train = random_mask_value(
+            tokenized_train["values"],
+            mask_ratio=self.mask_ratio,
+            mask_value=self.mask_value,
+            pad_value=self.pad_value,
+        )
+
+        masked_values_valid = random_mask_value(
+            tokenized_valid["values"],
+            mask_ratio=self.mask_ratio,
+            mask_value=self.mask_value,
+            pad_value=self.pad_value,
+        )
+
+        input_values_train, input_values_valid = masked_values_train, masked_values_valid
         target_values_train, target_values_valid = (
             tokenized_train["values"],
             tokenized_valid["values"],
@@ -148,9 +217,9 @@ class CellAnnotationModelWrapper():
         predictions = []
         with torch.no_grad():
             for batch_data in loader:
-                input_gene_ids = batch_data["gene_ids"]
-                input_values = batch_data["values"]
-                celltype_labels = batch_data["celltype_labels"]
+                input_gene_ids = batch_data["gene_ids"].to(self.device)
+                input_values = batch_data["values"].to(self.device)
+                celltype_labels = batch_data["celltype_labels"].to(self.device)
 
                 src_key_padding_mask = input_gene_ids.eq(self.vocab[self.pad_token])
                 with torch.cuda.amp.autocast(enabled=True):
@@ -177,7 +246,7 @@ class CellAnnotationModelWrapper():
 
 
 
-    def test(self, adata: DataLoader, max_seq_len, eval_batch_size) -> float:
+    def test(self, adata: DataLoader, eval_batch_size) -> float:
         all_counts = (
             adata.layers[INPUT_LAYER].A
             if issparse(adata.layers[INPUT_LAYER])
@@ -196,7 +265,7 @@ class CellAnnotationModelWrapper():
         tokenized_test = tokenize_and_pad_batch(
             all_counts,
             gene_ids,
-            max_len=max_seq_len,
+            max_len=self.max_seq_len,
             vocab=self.vocab,
             pad_token=self.pad_token,
             pad_value=self.pad_value,
@@ -247,8 +316,89 @@ class CellAnnotationModelWrapper():
 
         return predictions, celltypes_labels, results
 
-    def train(self, adata: DataLoader, max_seq_len, train_batch_size):
-        # train test split
+    def _train_step(self, data_loader: DataLoader, optimizer, scheduler, scaler, epoch):
+
+        self.model.train()
+        total_loss = 0.0
+        total_cls = 0.0
+        total_error = 0.0
+        start_time = time.time()
+
+        num_batches = len(data_loader)
+        for batch, batch_data in enumerate(data_loader):
+            input_gene_ids = batch_data["gene_ids"].to(self.device)
+            input_values = batch_data["values"].to(self.device)
+            celltype_labels = batch_data["celltype_labels"].to(self.device)
+
+            src_key_padding_mask = input_gene_ids.eq(self.vocab[self.pad_token])
+            with torch.cuda.amp.autocast(enabled=True):
+                output_dict = self.model(
+                    input_gene_ids,
+                    input_values,
+                    src_key_padding_mask=src_key_padding_mask,
+                    batch_labels=None,
+                    CLS=True,
+                    do_sample=False,
+                )
+
+                loss = 0.0
+                metrics_to_log = {}
+                loss_cls = self.criterion(output_dict["cls_output"], celltype_labels)
+                loss = loss + loss_cls
+                metrics_to_log.update({"train/cls": loss_cls.item()})
+
+                error_rate = 1 - (
+                    (output_dict["cls_output"].argmax(1) == celltype_labels)
+                    .sum()
+                    .item()
+                ) / celltype_labels.size(0)
+
+            self.model.zero_grad()
+            if torch.cuda.is_available():
+                loss = loss.cuda()
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
+            with warnings.catch_warnings(record=True) as w:
+                warnings.filterwarnings("always")
+                torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(),
+                    1.0,
+                    error_if_nonfinite=False if scaler.is_enabled() else True,
+                )
+                if len(w) > 0:
+                    self.logger.warning(
+                        f"Found infinite gradient. This may be caused by the gradient "
+                        f"scaler. The current scale is {scaler.get_scale()}. This warning "
+                        "can be ignored if no longer occurs after autoscaling of the scaler."
+                    )
+            scaler.step(optimizer)
+            scaler.update()
+
+            #wandb.log(metrics_to_log)
+
+            total_loss += loss.item()
+            total_cls += loss_cls.item() if CLS else 0.0
+            total_error += error_rate
+            if batch % self.log_interval == 0 and batch > 0:
+                lr = scheduler.get_last_lr()[0]
+                ms_per_batch = (time.time() - start_time) * 1000 / self.log_interval
+                cur_loss = total_loss / self.log_interval
+                cur_cls = total_cls / self.log_interval
+                cur_error = total_error / self.log_interval
+                self.logger.info(
+                    f"| epoch {epoch:3d} | {batch:3d}/{num_batches:3d} batches | "
+                    f"lr {lr:05.4f} | ms/batch {ms_per_batch:5.2f} | "
+                    f"loss {cur_loss:5.2f} | "
+                    + (f"cls {cur_cls:5.2f} | " if CLS else "")
+                    + (f"err {cur_error:5.2f} | " if CLS else "")
+                )
+                total_loss = 0
+                total_cls = 0
+                total_error = 0
+                start_time = time.time()
+
+
+    def train(self, num_epochs, adata):
 
         all_counts = (
             adata.layers[INPUT_LAYER].A
@@ -260,8 +410,10 @@ class CellAnnotationModelWrapper():
         celltypes_labels = np.array(celltypes_labels)
 
         batch_ids = adata.obs["batch_id"].tolist()
-        num_batch_types = len(set(batch_ids))
         batch_ids = np.array(batch_ids)
+
+        genes = adata.var.index.tolist()
+        gene_ids = np.array(self.vocab(genes), dtype=int)
 
         (
             train_data,
@@ -274,199 +426,64 @@ class CellAnnotationModelWrapper():
             all_counts, celltypes_labels, batch_ids, test_size=0.1, shuffle=True
         )
 
-        train_data_pt, valid_data_pt = self._prepare_data_for_train(
-            train_data, valid_data,
-            train_batch_labels, valid_batch_labels,
-            train_celltype_labels, valid_celltype_labels)
-
-        """
-        Train the model for one epoch.
-        """
-        self.model.train()
-        (
-            total_loss,
-            total_mse,
-            total_cls,
-            total_zero_log_prob,
-        ) = (0.0, 0.0, 0.0, 0.0)
-        total_error = 0.0
-        start_time = time.time()
-
-        num_batches = len(loader)
-        for batch, batch_data in enumerate(loader):
-            input_gene_ids = batch_data["gene_ids"]
-            input_values = batch_data["values"]
-            target_values = batch_data["target_values"]
-            batch_labels = batch_data["batch_labels"]
-            celltype_labels = batch_data["celltype_labels"]
-
-            src_key_padding_mask = input_gene_ids.eq(vocab[pad_token])
-            with torch.cuda.amp.autocast(enabled=config.amp):
-                output_dict = model(
-                    input_gene_ids,
-                    input_values,
-                    src_key_padding_mask=src_key_padding_mask,
-                    batch_labels=batch_labels if INPUT_BATCH_LABELS or config.DSBN else None,
-                    CLS=True,
-                    do_sample=do_sample_in_train,
-                    #generative_training=False
-                )
-
-                loss = 0.0
-                metrics_to_log = {}
-                if CLS:
-                    loss_cls = criterion_cls(output_dict["cls_output"], celltype_labels)
-                    loss = loss + loss_cls
-                    metrics_to_log.update({"train/cls": loss_cls.item()})
-
-                    error_rate = 1 - (
-                        (output_dict["cls_output"].argmax(1) == celltype_labels)
-                        .sum()
-                        .item()
-                    ) / celltype_labels.size(0)
-
-            self.model.zero_grad()
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            with warnings.catch_warnings(record=True) as w:
-                warnings.filterwarnings("always")
-                torch.nn.utils.clip_grad_norm_(
-                    model.parameters(),
-                    1.0,
-                    error_if_nonfinite=False if scaler.is_enabled() else True,
-                )
-                if len(w) > 0:
-                    logger.warning(
-                        f"Found infinite gradient. This may be caused by the gradient "
-                        f"scaler. The current scale is {scaler.get_scale()}. This warning "
-                        "can be ignored if no longer occurs after autoscaling of the scaler."
-                    )
-            scaler.step(optimizer)
-            scaler.update()
-
-            #wandb.log(metrics_to_log)
-
-            total_loss += loss.item()
-            total_mse += loss_mse.item() if MLM else 0.0
-            total_cls += loss_cls.item() if CLS else 0.0
-            total_cce += loss_cce.item() if CCE else 0.0
-            total_mvc += loss_mvc.item() if MVC else 0.0
-            total_ecs += loss_ecs.item() if ECS else 0.0
-            total_dab += loss_dab.item() if DAB else 0.0
-            total_adv_E += loss_adv_E.item() if ADV else 0.0
-            total_adv_D += loss_adv_D.item() if ADV else 0.0
-            total_zero_log_prob += loss_zero_log_prob.item() if explicit_zero_prob else 0.0
-            total_mvc_zero_log_prob += (
-                loss_mvc_zero_log_prob.item() if MVC and explicit_zero_prob else 0.0
-            )
-            total_error += error_rate
-            if batch % log_interval == 0 and batch > 0:
-                lr = scheduler.get_last_lr()[0]
-                ms_per_batch = (time.time() - start_time) * 1000 / log_interval
-                cur_loss = total_loss / log_interval
-                cur_mse = total_mse / log_interval
-                cur_cls = total_cls / log_interval if CLS else 0.0
-                cur_cce = total_cce / log_interval if CCE else 0.0
-                cur_mvc = total_mvc / log_interval if MVC else 0.0
-                cur_ecs = total_ecs / log_interval if ECS else 0.0
-                cur_dab = total_dab / log_interval if DAB else 0.0
-                cur_adv_E = total_adv_E / log_interval if ADV else 0.0
-                cur_adv_D = total_adv_D / log_interval if ADV else 0.0
-                cur_zero_log_prob = (
-                    total_zero_log_prob / log_interval if explicit_zero_prob else 0.0
-                )
-                cur_mvc_zero_log_prob = (
-                    total_mvc_zero_log_prob / log_interval
-                    if MVC and explicit_zero_prob
-                    else 0.0
-                )
-                cur_error = total_error / log_interval
-                # ppl = math.exp(cur_loss)
-                logger.info(
-                    f"| epoch {epoch:3d} | {batch:3d}/{num_batches:3d} batches | "
-                    f"lr {lr:05.4f} | ms/batch {ms_per_batch:5.2f} | "
-                    f"loss {cur_loss:5.2f} | "
-                    + (f"mse {cur_mse:5.2f} | mre {cur_error:5.2f} |" if MLM else "")
-                    + (f"cls {cur_cls:5.2f} | " if CLS else "")
-                    + (f"err {cur_error:5.2f} | " if CLS else "")
-                    + (f"cce {cur_cce:5.2f} |" if CCE else "")
-                    + (f"mvc {cur_mvc:5.2f} |" if MVC else "")
-                    + (f"ecs {cur_ecs:5.2f} |" if ECS else "")
-                    + (f"dab {cur_dab:5.2f} |" if DAB else "")
-                    + (f"adv_E {cur_adv_E:5.2f} |" if ADV else "")
-                    + (f"adv_D {cur_adv_D:5.2f} |" if ADV else "")
-                    + (f"nzlp {cur_zero_log_prob:5.2f} |" if explicit_zero_prob else "")
-                    + (
-                        f"mvc_nzlp {cur_mvc_zero_log_prob:5.2f} |"
-                        if MVC and explicit_zero_prob
-                        else ""
-                    )
-                )
-                total_loss = 0
-                total_mse = 0
-                total_cls = 0
-                total_cce = 0
-                total_mvc = 0
-                total_ecs = 0
-                total_dab = 0
-                total_adv_E = 0
-                total_adv_D = 0
-                total_zero_log_prob = 0
-                total_mvc_zero_log_prob = 0
-                total_error = 0
-                start_time = time.time()
-
-    def run_training(self, num_epochs):
         best_val_loss = float("inf")
-        best_avg_bio = 0.0
-        best_model = None
         #define_wandb_metrcis()
+
+        optimizer = torch.optim.Adam(
+            self.model.parameters(), lr=self.lr, eps=self.eps
+        )
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer, self.schedule_interval, gamma=self.schedule_ratio
+        )
+
+        scaler = torch.cuda.amp.GradScaler(enabled=True)
+
+        for group in optimizer.param_groups:
+            for p in group['params']:
+                if not p.is_cuda:
+                    print(f"Found optimizer parameter on CPU: {p.shape}")
+                    #p.data = p.data.cuda()
+                    if p.grad is not None:
+                        p.grad.data = p.grad.data.cuda()
 
         for epoch in range(1, num_epochs + 1):
             epoch_start_time = time.time()
-            train_data_pt, valid_data_pt = prepare_data(sort_seq_batch=per_seq_batch_sample)
+            train_data_pt, valid_data_pt = self._prepare_data_for_train(
+                train_data, valid_data,
+                train_batch_labels, valid_batch_labels,
+                train_celltype_labels, valid_celltype_labels,
+                gene_ids
+            )
+
             train_loader = prepare_dataloader(
                 train_data_pt,
-                batch_size=batch_size,
+                batch_size=self.batch_size,
                 shuffle=False,
-                intra_domain_shuffle=True,
                 drop_last=False,
             )
             valid_loader = prepare_dataloader(
                 valid_data_pt,
-                batch_size=eval_batch_size,
+                batch_size=self.eval_batch_size,
                 shuffle=False,
-                intra_domain_shuffle=False,
                 drop_last=False,
             )
 
-            if config.do_train:
-                train(
-                    model,
-                    loader=train_loader,
-                )
-            val_loss, val_err = evaluate(
-                model,
-                loader=valid_loader,
-            )
+            self._train_step(train_loader, optimizer, scheduler, scaler, epoch)
+            val_loss, val_err = self._evaluate(loader=valid_loader)
+
             elapsed = time.time() - epoch_start_time
-            logger.info("-" * 89)
-            logger.info(
+            self.logger.info("-" * 89)
+            self.logger.info(
                 f"| end of epoch {epoch:3d} | time: {elapsed:5.2f}s | "
                 f"valid loss/mse {val_loss:5.4f} | err {val_err:5.4f}"
             )
-            logger.info("-" * 89)
+            self.logger.info("-" * 89)
 
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                best_model = copy.deepcopy(model)
-                best_model_epoch = epoch
-                logger.info(f"Best model with score {best_val_loss:5.4f}")
+                self.logger.info(f"Best model with score {best_val_loss:5.4f}")
+                torch.save(self.model.state_dict(), RETRAINED_MODELS_DIR + self.model_name + '.pth')
 
             scheduler.step()
-            if DAB_separate_optim:
-                scheduler_dab.step()
-            if ADV:
-                scheduler_D.step()
-                scheduler_E.step()
-        pass
+
+        #TODO: save the model. Also add intermediate saving steps.
