@@ -88,7 +88,7 @@ def init_wandb(lr, model_name, epochs, batch_size, schedule_ratio, schedule_inte
 class CellAnnotationModelWrapper():
 
     def __init__(self, model_path, pad_value, vocab, config_dict, num_batches, num_celltypes, max_seq_len, lr=LR, log_dir="cell_annotation_logs/",
-                 mask_value=MASK_VALUE, mask_ratio=MASK_RATIO, model_name="awesome_model"):
+                 mask_value=MASK_VALUE, mask_ratio=MASK_RATIO, model_name="awesome_model", wandb=False):
         
         self.model = TransformerModel(ntoken=len(vocab), 
                             num_batch_labels=num_batches,
@@ -119,6 +119,7 @@ class CellAnnotationModelWrapper():
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
         self.model_name = model_name
+        self.wandb = wandb
 
 
     def load_model(self, model_path):
@@ -251,13 +252,14 @@ class CellAnnotationModelWrapper():
                 preds = output_values.argmax(1).cpu().numpy()
                 predictions.append(preds)
 
-        wandb.log(
-            {
-                "valid/mse": total_loss / total_num,
-                "valid/err": total_error / total_num,
-                "epoch": epoch,
-            }
-        )
+        if self.wandb:
+            wandb.log(
+                {
+                    "valid/mse": total_loss / total_num,
+                    "valid/err": total_error / total_num,
+                    "epoch": epoch,
+                }
+            )
 
         if return_raw:
             return np.concatenate(predictions, axis=0)
@@ -394,7 +396,8 @@ class CellAnnotationModelWrapper():
             scaler.step(optimizer)
             scaler.update()
 
-            wandb.log({"train/loss": cur_loss, "train/cls": cur_cls, "train/err": cur_error})
+            if self.wandb:
+                wandb.log({"train/loss": cur_loss, "train/cls": cur_cls, "train/err": cur_error})
 
             total_loss += loss.item()
             total_cls += loss_cls.item() if CLS else 0.0
@@ -420,8 +423,9 @@ class CellAnnotationModelWrapper():
 
     def train(self, num_epochs, adata, seed):
 
-        init_wandb(self.lr, self.model_name, num_epochs, self.batch_size, self.schedule_ratio, self.schedule_interval, seed)
-        wandb.watch(self.model)
+        if self.wandb:
+            init_wandb(self.lr, self.model_name, num_epochs, self.batch_size, self.schedule_ratio, self.schedule_interval, seed)
+            wandb.watch(self.model)
 
         all_counts = (
             adata.layers[INPUT_LAYER].A

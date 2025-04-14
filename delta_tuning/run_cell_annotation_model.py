@@ -69,6 +69,7 @@ def main():
     parser.add_argument("--model_name", type=str, default="awesome_model", help="The name of the model to be saved")
     parser.add_argument("--finetune", type=bool, default=False)
     parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--wandb", type=bool, default=False, help="Whether to use wandb for logging")
     args = parser.parse_args()
 
     set_seed(args.seed)
