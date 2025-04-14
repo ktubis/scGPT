@@ -6,13 +6,11 @@ from torch import nn
 from scipy.sparse import issparse
 import torch
 from typing import Dict, Tuple
-import json
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import time
 import warnings
-import copy
 from sklearn.model_selection import train_test_split
-from datetime import datetime
+import wandb
 
 sys.path.insert(0, "../")
 from scgpt.tokenizer import tokenize_and_pad_batch, random_mask_value
@@ -69,6 +67,23 @@ def prepare_dataloader(
     )
     return data_loader
     
+
+def init_wandb(lr, model_name, epochs, batch_size, schedule_ratio, schedule_interval, seed):
+    config = {
+        "learning_rate": lr,
+        "model_name": model_name,
+        "epochs": epochs,
+        "batch_size": batch_size,
+        "schedule_ratio": schedule_ratio,
+        "schedule_interval": schedule_interval,
+        "seed": seed,
+    }
+    wandb.init(
+        config=config,
+        project="cell_annotation",
+        reinit=True,
+        settings=wandb.Settings(start_method="fork"))
+
 
 class CellAnnotationModelWrapper():
 
@@ -203,7 +218,7 @@ class CellAnnotationModelWrapper():
         return train_data_pt, valid_data_pt
 
     
-    def _evaluate(self, loader: DataLoader, return_raw: bool = False) -> float:
+    def _evaluate(self, loader: DataLoader, epoch=0, return_raw: bool = False) -> float:
         """
         Evaluate the model on the evaluation data.
         """
@@ -235,6 +250,14 @@ class CellAnnotationModelWrapper():
                 total_num += len(input_gene_ids)
                 preds = output_values.argmax(1).cpu().numpy()
                 predictions.append(preds)
+
+        wandb.log(
+            {
+                "valid/mse": total_loss / total_num,
+                "valid/err": total_error / total_num,
+                "epoch": epoch,
+            }
+        )
 
         if return_raw:
             return np.concatenate(predictions, axis=0)
@@ -371,7 +394,7 @@ class CellAnnotationModelWrapper():
             scaler.step(optimizer)
             scaler.update()
 
-            #wandb.log(metrics_to_log)
+            wandb.log({"train/loss": cur_loss, "train/cls": cur_cls, "train/err": cur_error})
 
             total_loss += loss.item()
             total_cls += loss_cls.item() if CLS else 0.0
@@ -395,7 +418,10 @@ class CellAnnotationModelWrapper():
                 start_time = time.time()
 
 
-    def train(self, num_epochs, adata):
+    def train(self, num_epochs, adata, seed):
+
+        init_wandb(self.lr, self.model_name, num_epochs, self.batch_size, self.schedule_ratio, self.schedule_interval, seed)
+        wandb.watch(self.model)
 
         all_counts = (
             adata.layers[INPUT_LAYER].A
@@ -466,7 +492,7 @@ class CellAnnotationModelWrapper():
             )
 
             self._train_step(train_loader, optimizer, scheduler, scaler, epoch)
-            val_loss, val_err = self._evaluate(loader=valid_loader)
+            val_loss, val_err = self._evaluate(loader=valid_loader, epoch=epoch)
 
             elapsed = time.time() - epoch_start_time
             self.logger.info("-" * 89)

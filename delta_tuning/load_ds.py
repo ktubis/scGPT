@@ -6,10 +6,6 @@ import numpy as np
 from pathlib import Path
 from enum import Enum
 
-class Katya:
-    def __init__(self):
-        print("Katya class initialized")
-
 class PancreaticDataset:
 
     DATASET_PATH = "../delta_tuning/data/scRNAseq_Benchmark_datasets/Intra-dataset/Pancreatic_data/"

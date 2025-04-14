@@ -121,7 +121,7 @@ def main():
         cam.finetune_cls_decoder()
 
     if args.train:
-        cam.train(args.epochs, adata_train)
+        cam.train(args.epochs, adata_train, args.seed)
     
     predictions, celltypes_labels, results = cam.test(adata_test)
     
@@ -129,7 +129,7 @@ def main():
     if not results_file.exists():
         results_file.touch()
     
-    with open(args.results_file, "w") as f:
+    with open(results_file, "w") as f:
         json.dump(results, f)
 
     predictions_file = Path("predictions/" + args.model_name)
