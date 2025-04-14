@@ -113,7 +113,7 @@ class CellAnnotationModelWrapper():
         self.eval_batch_size = EVAL_BATCH_SIZE
         self.log_interval = LOG_INTERVAL
         self.logger = scgpt.logger
-        scgpt.utils.add_file_handler(self.logger, log_dir + "run.log")
+        scgpt.utils.add_file_handler(self.logger, log_dir + "{model_name}.log")
         self.max_seq_len = max_seq_len
         self.model_name = model_name
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
