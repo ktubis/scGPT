@@ -72,7 +72,7 @@ def prepare_dataloader(
 
 class CellAnnotationModelWrapper():
 
-    def __init__(self, model_path, pad_value, vocab, config_dict, num_batches, num_celltypes, max_seq_len, log_dir="cell_annotation_logs/",
+    def __init__(self, model_path, pad_value, vocab, config_dict, num_batches, num_celltypes, max_seq_len, lr=LR, log_dir="cell_annotation_logs/",
                  mask_value=MASK_VALUE, mask_ratio=MASK_RATIO, model_name="awesome_model"):
         
         self.model = TransformerModel(ntoken=len(vocab), 
@@ -90,7 +90,7 @@ class CellAnnotationModelWrapper():
         self.pad_value = pad_value
         self.pad_token = config_dict["pad_token"]
         self.criterion = nn.CrossEntropyLoss()
-        self.lr = LR
+        self.lr = lr
         self.schedule_interval = SCHEDULE_INTERVAL
         self.eps = EPS
         self.schedule_ratio = SCHEDULE_RATIO
@@ -103,10 +103,7 @@ class CellAnnotationModelWrapper():
         self.model_name = model_name
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
-
-        # Get the current date and time, format as 'yymmddhhmm'
-        formatted_time = datetime.now().strftime('%y%m%d%H%M')
-        self.model_name += f"_{formatted_time}"
+        self.model_name = model_name
 
 
     def load_model(self, model_path):
@@ -246,7 +243,7 @@ class CellAnnotationModelWrapper():
 
 
 
-    def test(self, adata: DataLoader, eval_batch_size) -> float:
+    def test(self, adata: DataLoader, eval_batch_size=EVAL_BATCH_SIZE) -> float:
         all_counts = (
             adata.layers[INPUT_LAYER].A
             if issparse(adata.layers[INPUT_LAYER])
@@ -487,3 +484,10 @@ class CellAnnotationModelWrapper():
             scheduler.step()
 
         #TODO: save the model. Also add intermediate saving steps.
+
+    def finetune_cls_decoder(self):
+        for param in self.model.parameters():
+            param.requires_grad = False
+        
+        for param in self.model.cls_decoder.parameters():
+            param.requires_grad = True

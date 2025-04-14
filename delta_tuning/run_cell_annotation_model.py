@@ -15,6 +15,7 @@ import numpy as np
 import os
 import argparse
 from pathlib import Path
+from datetime import datetime
 
 sys.path.insert(0, "../")
 from scgpt.model import TransformerModel
@@ -58,17 +59,16 @@ def preprocess_data(adata, preprocessor, vocab):
 
 def main():
     parser = argparse.ArgumentParser(description="Cell Annotation Model")
-    parser.add_argument("--model_config_path", type=str, required=True, help="Path to the model config file")
-    parser.add_argument("--model", type=str, default=None, help="Path to the pretrained model to load. Must match the model config file. If None, will initialize a new model.")
-    parser.add_argument("--results_file", type=str, required=True, help="Path to the file in which to save the results")
+    parser.add_argument("--model_config_path", type=str, default="model_configs/scgpt_pretrained_model.json", help="Path to the model config file")
+    parser.add_argument("--model", type=str, default="../pretrained_models/best_model/best_model.pt", help="Path to the pretrained model to load. Must match the model config file. If None, will initialize a new model.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--test_data", type=str, default="Muraro", help="Which dataset to use as the test data")
-    parser.add_argument("--test_batch_size", type=int, default=32, help="Batch size for testing")
     parser.add_argument("--max_seq_len", type=int, default=301, help="Maximum sequence length")
-    parser.add_argument("--log_file", type=str, default="log.txt", help="Name of the log file")
     parser.add_argument("--train", type=bool, default=False, help="Whether to train the model or not")
     parser.add_argument("--epochs", type=int, default=10, help="Number of epochs to train the model")
     parser.add_argument("--model_name", type=str, default="awesome_model", help="The name of the model to be saved")
+    parser.add_argument("--finetune", type=bool, default=False)
+    parser.add_argument("--lr", type=float, default=1e-4)
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -99,6 +99,10 @@ def main():
     num_celltypes = ds_loader.get_num_celltypes()
     num_batches = ds_loader.get_num_batches()
 
+    # Get the current date and time, format as 'yymmddhhmm'
+    formatted_time = datetime.now().strftime('%y%m%d%H%M')
+    model_name = args.model_name + f"_{formatted_time}"
+
     cam = CellAnnotationModelWrapper(
         model_path=args.model,
         max_seq_len=args.max_seq_len,
@@ -107,28 +111,30 @@ def main():
         config_dict=config_dict,
         num_batches=num_batches,
         num_celltypes=num_celltypes,
-        model_name=args.model_name,
+        model_name=model_name,
+        lr=args.lr
     )
 
     print(cam.model)
 
+    if args.finetune:
+        cam.finetune_cls_decoder()
+
     if args.train:
         cam.train(args.epochs, adata_train)
     
-    predictions, celltypes_labels, results = cam.test(adata_test, eval_batch_size=args.test_batch_size)
+    predictions, celltypes_labels, results = cam.test(adata_test)
     
-    results_file = Path(args.results_file)
+    results_file = Path("results/" + args.model_name)
     if not results_file.exists():
         results_file.touch()
-        print("File created successfully")        
     
     with open(args.results_file, "w") as f:
         json.dump(results, f)
 
-    log_file = Path(args.log_file)
-    if not log_file.exists():
-        log_file.touch()
-        print("Log file created successfully")
+    predictions_file = Path("predictions/" + args.model_name)
+    if not predictions_file.exists():
+        predictions_file.touch()
 
     with open(args.log_file, "w") as f:
         f.write(f"Predictions:\n {list(predictions)}\n")

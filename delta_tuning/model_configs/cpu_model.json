@@ -10,7 +10,7 @@
     "dropout": 0.2,
     "nlayers_cls": 3,
     "pad_value": -2,
-    "do_mvc": true,
+    "do_mvc": false,
     "cell_emb_style": "cls",
     "ecs_threshold": 0.0,
     "fast_transformer_backend": "flash"
