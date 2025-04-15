@@ -64,12 +64,12 @@ def main():
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--test_data", type=str, default="Muraro", help="Which dataset to use as the test data")
     parser.add_argument("--max_seq_len", type=int, default=301, help="Maximum sequence length")
-    parser.add_argument("--train", type=bool, default=False, help="Whether to train the model or not")
+    parser.add_argument("--train", type=bool, action='store_true', default=False, help="Whether to train the model or not")
     parser.add_argument("--epochs", type=int, default=10, help="Number of epochs to train the model")
     parser.add_argument("--model_name", type=str, default="awesome_model", help="The name of the model to be saved")
-    parser.add_argument("--finetune", type=bool, default=False)
+    parser.add_argument("--finetune", type=bool, action='store_true', default=False)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--wandb", type=bool, default=False, help="Whether to use wandb for logging")
+    parser.add_argument("--wandb", type=bool, action='store_true', default=False, help="Whether to use wandb for logging")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -85,6 +85,7 @@ def main():
 
     ds_loader = load_ds.PancreaticDataset()
     adata_train, adata_test = ds_loader.get_train_test(args.test_data)
+    adata_test2 = ds_loader.adata[ds_loader.adata.obs["batch_id"] == ds_loader.dataset_batch_dict["Xin"]].copy()
 
     # set up the preprocessor, use the args to config the workflow
     preprocessor = Preprocessor(
@@ -96,6 +97,7 @@ def main():
 
     adata_train = preprocess_data(adata_train, preprocessor, vocab)
     adata_test = preprocess_data(adata_test, preprocessor, vocab)
+    adata_test2 = preprocess_data(adata_test2, preprocessor, vocab)
 
     num_celltypes = ds_loader.get_num_celltypes()
     num_batches = ds_loader.get_num_batches()
@@ -127,7 +129,7 @@ def main():
         cam.finetune_cls_decoder()
 
     if args.train:
-        cam.train(args.epochs, adata_train, args.seed)
+        cam.train(args.epochs, adata_train, args.seed, adata_test1=adata_test, adata_test2=adata_test2)
     
     predictions, celltypes_labels, results = cam.test(adata_test)
     

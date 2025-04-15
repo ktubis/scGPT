@@ -421,7 +421,7 @@ class CellAnnotationModelWrapper():
                 start_time = time.time()
 
 
-    def train(self, num_epochs, adata, seed):
+    def train(self, num_epochs, adata, seed, adata_test1, adata_test2):
 
         if self.wandb:
             init_wandb(self.lr, self.model_name, num_epochs, self.batch_size, self.schedule_ratio, self.schedule_interval, seed)
@@ -497,6 +497,14 @@ class CellAnnotationModelWrapper():
 
             self._train_step(train_loader, optimizer, scheduler, scaler, epoch)
             val_loss, val_err = self._evaluate(loader=valid_loader, epoch=epoch)
+            _, _, test_results1 = self.test(adata_test1, eval_batch_size=self.eval_batch_size)
+            _, _, test_results2 = self.test(adata_test2, eval_batch_size=self.eval_batch_size)
+            self.logger.info(
+                f"Test results on Muraro": {test_results1}"
+            )
+            self.logger.info(
+                f"Test results on Xin: {test_results2}"
+            )
 
             elapsed = time.time() - epoch_start_time
             self.logger.info("-" * 89)
