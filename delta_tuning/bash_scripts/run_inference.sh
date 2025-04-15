@@ -1,0 +1,1 @@
+python run_cell_annotation_model.py --max_seq_len=3001 --train=False --model="pretrained_models/retrain_all_2504141132.pth" --test_data="Muraro"

@@ -102,7 +102,11 @@ def main():
 
     # Get the current date and time, format as 'yymmddhhmm'
     formatted_time = datetime.now().strftime('%y%m%d%H%M')
-    model_name = args.model_name + f"_{formatted_time}"
+
+    if not args.train:
+        model_name = args.model.split('/')[-1].split('.')[0]
+    else:
+        model_name = args.model_name + f"_{formatted_time}"
 
     cam = CellAnnotationModelWrapper(
         model_path=args.model,
@@ -113,7 +117,8 @@ def main():
         num_batches=num_batches,
         num_celltypes=num_celltypes,
         model_name=model_name,
-        lr=args.lr
+        lr=args.lr,
+        wandb=args.wandb,
     )
 
     print(cam.model)
@@ -126,18 +131,18 @@ def main():
     
     predictions, celltypes_labels, results = cam.test(adata_test)
     
-    results_file = Path("results/" + args.model_name)
+    results_file = Path("results/" + model_name)
     if not results_file.exists():
         results_file.touch()
     
     with open(results_file, "w") as f:
         json.dump(results, f)
 
-    predictions_file = Path("predictions/" + args.model_name)
+    predictions_file = Path("predictions/" + model_name)
     if not predictions_file.exists():
         predictions_file.touch()
 
-    with open(args.log_file, "w") as f:
+    with open(predictions_file, "w") as f:
         f.write(f"Predictions:\n {list(predictions)}\n")
         f.write(f"Celltype Labels:\n {list(celltypes_labels)}\n")
 
