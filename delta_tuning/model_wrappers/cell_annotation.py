@@ -500,7 +500,7 @@ class CellAnnotationModelWrapper():
             _, _, test_results1 = self.test(adata_test1, eval_batch_size=self.eval_batch_size)
             _, _, test_results2 = self.test(adata_test2, eval_batch_size=self.eval_batch_size)
             self.logger.info(
-                f"Test results on Muraro": {test_results1}"
+                f"Test results on Muraro: {test_results1}"
             )
             self.logger.info(
                 f"Test results on Xin: {test_results2}"
