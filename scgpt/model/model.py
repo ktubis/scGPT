@@ -36,6 +36,8 @@ class TransformerModel(nn.Module):
         nlayers: int,
         nlayers_cls: int = 3,
         n_cls: int = 1,
+        train_batch_size = 32,
+        seq_len = 3001,
         vocab: Any = None,
         dropout: float = 0.5,
         pad_token: str = "<pad>",
@@ -59,6 +61,9 @@ class TransformerModel(nn.Module):
         self.model_type = "Transformer"
         self.d_model = d_model
         self.do_dab = do_dab
+        self.batch_size = train_batch_size
+        self.seq_len = seq_len
+        self.nlayers=nlayers
         self.ecs_threshold = ecs_threshold
         self.use_batch_labels = use_batch_labels
         self.domain_spec_batchnorm = domain_spec_batchnorm
@@ -159,6 +164,12 @@ class TransformerModel(nn.Module):
         self.creterion_cce = nn.CrossEntropyLoss()
 
         self.init_weights()
+        self.dummy_inputs = {
+            'src': torch.randint(0, 16000, (self.batch_size, self.seq_len)),
+            'values': torch.randint(0, 50, (self.batch_size, self.seq_len), dtype=torch.float),
+            'src_key_padding_mask': torch.zeros(self.batch_size, self.seq_len, dtype=torch.bool),
+            "CLS": True,
+        }
 
 
     def init_weights(self) -> None:
@@ -446,7 +457,6 @@ class TransformerModel(nn.Module):
         src: Tensor,
         values: Tensor,
         src_key_padding_mask: Tensor,
-        batch_size: int,
         batch_labels: Optional[Tensor] = None,
         output_to_cpu: bool = True,
         time_step: Optional[int] = None,
@@ -467,6 +477,7 @@ class TransformerModel(nn.Module):
         Returns:
             output Tensor of shape [N, seq_len, embsize]
         """
+        print("in encode batch")
         N = src.size(0)
         device = next(self.parameters()).device
 
@@ -480,12 +491,13 @@ class TransformerModel(nn.Module):
         )
         outputs = array_func(shape, dtype=float32_)
 
-        for i in trange(0, N, batch_size):
+        print("self.batch_size", self.batch_size)
+        for i in trange(0, N, self.batch_size):
             raw_output = self._encode(
-                src[i : i + batch_size].to(device),
-                values[i : i + batch_size].to(device),
-                src_key_padding_mask[i : i + batch_size].to(device),
-                batch_labels[i : i + batch_size].to(device)
+                src[i : i + self.batch_size].to(device),
+                values[i : i + self.batch_size].to(device),
+                src_key_padding_mask[i : i + self.batch_size].to(device),
+                batch_labels[i : i + self.batch_size].to(device)
                 if batch_labels is not None
                 else None,
             )
@@ -496,7 +508,7 @@ class TransformerModel(nn.Module):
                 output = output.numpy()
             if time_step is not None:
                 output = output[:, time_step, :]
-            outputs[i : i + batch_size] = output
+            outputs[i : i + self.batch_size] = output
 
         return outputs
 

@@ -16,6 +16,7 @@ import os
 import argparse
 from pathlib import Path
 from datetime import datetime
+from opendelta import AdapterModel
 
 sys.path.insert(0, "../")
 from scgpt.model import TransformerModel
@@ -70,6 +71,8 @@ def main():
     parser.add_argument("--finetune", action='store_true', help="Whether to finetune the model or not")
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--wandb", action='store_true', help="Whether to use wandb for logging")
+    parser.add_argument("--delta_adapter", action='store_true', help="Path to the delta tuning config file")
+    parser.add_argument("--adapter_bottleneck_dim", default=24)
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -122,6 +125,13 @@ def main():
         lr=args.lr,
         wandb=args.wandb,
     )
+
+    if args.delta_adapter is not None:
+        modified_modules = []
+        for i in range(cam.model.nlayers):
+            modified_modules.append(f"transformer_encoder.layers.{i}.linear2")
+        delta_model = AdapterModel(backbone_model=cam.model, modified_modules=modified_modules, bottleneck_dim=args.adapter_bottleneck_dim)
+        delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
 
     print(cam.model)
 
