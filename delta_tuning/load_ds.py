@@ -62,6 +62,7 @@ class PancreaticDataset:
         if dataset == self.SupportedDatasets.MURARO:
             genes = [gene.split('__')[0] for gene in gene_counts.columns]
             gene_counts.columns = genes
+            labels.rename(index={"duct": "ductal"}, inplace=True)
         
         # Filter duplicate genes
         gene_counts = gene_counts.loc[:, ~gene_counts.columns.duplicated()]
@@ -82,10 +83,7 @@ class PancreaticDataset:
         # Set gene names as index
         adata.var["gene_name"] = gene_counts.columns
         adata.var.set_index("gene_name", inplace=True)
-        
-        # Add celltype_id column
-        celltype_id_labels = adata.obs["celltype"].astype("category").cat.codes.values
-        adata.obs["celltype_id"] = celltype_id_labels
+
         
         return adata
     
@@ -106,6 +104,10 @@ class PancreaticDataset:
             adata_list.append(adata)
         
         self.adata = ad.concat(adata_list, join="inner")
+
+        # Add celltype_id column
+        celltype_id_labels = self.adata.obs["celltype"].astype("category").cat.codes.values
+        self.adata.obs["celltype_id"] = celltype_id_labels
 
         # Create id2type mapping for the combined dataset
         self.id2type = dict(enumerate(self.adata.obs["celltype"].astype("category").cat.categories))
