@@ -408,6 +408,11 @@ class CellAnnotationModelWrapper():
             epoch_loss += loss.item()
             total_cls += loss_cls.item() if CLS else 0.0
             total_error += error_rate
+
+            if find_lr:
+                with open(f"cell_annotation_logs/{self.model_name}", 'a') as f:
+                    f.write(f"{scheduler.get_last_lr()[0]} {loss.item()}\n")
+
             if batch % self.log_interval == 0 and batch > 0:
                 lr = scheduler.get_last_lr()[0]
                 ms_per_batch = (time.time() - start_time) * 1000 / self.log_interval
@@ -425,22 +430,6 @@ class CellAnnotationModelWrapper():
                 total_cls = 0
                 total_error = 0
                 start_time = time.time()
-            
-        if find_lr:
-            with open(f"cell_annotation_logs/{self.model_name}", 'a') as f:
-                f.write(f"{scheduler.get_last_lr()[0]} {epoch_loss / num_batches}\n")
-            with open(f"cell_annotation_logs/{self.model_name}", 'r') as f:
-                lines = f.readlines()
-            losses = []
-            lrs = []
-            for line in lines:
-                line_lr, line_loss = line.split()
-                lrs.append(float(line_lr))
-                losses.append(float(line_loss))
-            plt.plot(lrs, losses)
-            plt.xlabel("Learning Rate")
-            plt.ylabel("Training Loss")
-            plt.savefig(f"cell_annotation_logs/{self.model_name}_lr_plot")
 
 
     def train(self, num_epochs, adata, seed, adata_test1, adata_test2, find_lr=False):
