@@ -352,6 +352,7 @@ class CellAnnotationModelWrapper():
 
         num_batches = len(data_loader)
         epoch_loss = 0
+        cur_loss = 0
         for batch, batch_data in enumerate(data_loader):
             input_gene_ids = batch_data["gene_ids"].to(self.device)
             input_values = batch_data["values"].to(self.device)
@@ -416,7 +417,14 @@ class CellAnnotationModelWrapper():
             if batch % self.log_interval == 0 and batch > 0:
                 lr = scheduler.get_last_lr()[0]
                 ms_per_batch = (time.time() - start_time) * 1000 / self.log_interval
+                prev_loss = cur_loss
                 cur_loss = total_loss / self.log_interval
+
+                # Logic for finding the optimal lr.
+                # Terminate script if the loss is going up
+                if find_lr and prev_loss < cur_loss:
+                    return False
+                
                 cur_cls = total_cls / self.log_interval
                 cur_error = total_error / self.log_interval
                 self.logger.info(
@@ -430,6 +438,7 @@ class CellAnnotationModelWrapper():
                 total_cls = 0
                 total_error = 0
                 start_time = time.time()
+        return True
 
 
     def train(self, num_epochs, adata, seed, adata_test1, adata_test2, find_lr=False):
@@ -516,7 +525,10 @@ class CellAnnotationModelWrapper():
                 drop_last=False,
             )
 
-            self._train_step(train_loader, optimizer, scheduler, scaler, epoch, find_lr)
+            to_continue = self._train_step(train_loader, optimizer, scheduler, scaler, epoch, find_lr)
+            if not to_continue:
+                return
+            
             val_loss, val_err = self._evaluate(loader=valid_loader, epoch=epoch)
 
             # Early stopping mechanism
