@@ -402,7 +402,7 @@ class CellAnnotationModelWrapper():
             scaler.update()
 
             if self.wandb:
-                wandb.log({"train/loss": cur_loss, "train/cls": cur_cls, "train/err": cur_error})
+                wandb.log({"train/loss": loss.item(), "train/err": error_rate})
 
             total_loss += loss.item()
             epoch_loss += loss.item()
