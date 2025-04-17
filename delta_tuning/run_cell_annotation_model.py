@@ -72,7 +72,7 @@ def main():
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--wandb", action='store_true', help="Whether to use wandb for logging")
     parser.add_argument("--delta_adapter", action='store_true', help="Path to the delta tuning config file")
-    parser.add_argument("--adapter_bottleneck_dim", default=24)
+    parser.add_argument("--adapter_bottleneck_dim", default=24, type=int)
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -126,7 +126,7 @@ def main():
         wandb=args.wandb,
     )
 
-    if args.delta_adapter is not None:
+    if args.delta_adapter:
         modified_modules = []
         for i in range(cam.model.nlayers):
             modified_modules.append(f"transformer_encoder.layers.{i}.linear2")
@@ -141,7 +141,7 @@ def main():
     if args.train:
         cam.train(args.epochs, adata_train, args.seed, adata_test1=adata_test, adata_test2=adata_test2)
     
-    predictions, celltypes_labels, results = cam.test(adata_test)
+    _, _, results = cam.test(adata_test)
     
     results_file = Path("results/" + model_name)
     if not results_file.exists():
@@ -149,14 +149,6 @@ def main():
     
     with open(results_file, "w") as f:
         json.dump(results, f)
-
-    predictions_file = Path("predictions/" + model_name)
-    if not predictions_file.exists():
-        predictions_file.touch()
-
-    with open(predictions_file, "w") as f:
-        f.write(f"Predictions:\n {list(predictions)}\n")
-        f.write(f"Celltype Labels:\n {list(celltypes_labels)}\n")
 
 
 if __name__ == "__main__":
