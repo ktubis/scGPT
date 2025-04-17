@@ -16,6 +16,7 @@ sys.path.insert(0, "../")
 from scgpt.tokenizer import tokenize_and_pad_batch, random_mask_value
 from scgpt.model import TransformerModel
 import scgpt
+import matplotlib.pyplot as plt
 
 
 INPUT_LAYER = "X_binned"
@@ -113,7 +114,7 @@ class CellAnnotationModelWrapper():
         self.eval_batch_size = EVAL_BATCH_SIZE
         self.log_interval = LOG_INTERVAL
         self.logger = scgpt.logger
-        scgpt.utils.add_file_handler(self.logger, log_dir + "{model_name}.log")
+        scgpt.utils.add_file_handler(self.logger, log_dir + f"{model_name}.log")
         self.max_seq_len = max_seq_len
         self.model_name = model_name
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -338,7 +339,7 @@ class CellAnnotationModelWrapper():
 
         return predictions, celltypes_labels, results
 
-    def _train_step(self, data_loader: DataLoader, optimizer, scheduler, scaler, epoch):
+    def _train_step(self, data_loader: DataLoader, optimizer, scheduler, scaler, epoch, find_lr):
 
         self.model.train()
         total_loss = 0.0
@@ -347,6 +348,7 @@ class CellAnnotationModelWrapper():
         start_time = time.time()
 
         num_batches = len(data_loader)
+        epoch_loss = 0
         for batch, batch_data in enumerate(data_loader):
             input_gene_ids = batch_data["gene_ids"].to(self.device)
             input_values = batch_data["values"].to(self.device)
@@ -400,6 +402,7 @@ class CellAnnotationModelWrapper():
                 wandb.log({"train/loss": cur_loss, "train/cls": cur_cls, "train/err": cur_error})
 
             total_loss += loss.item()
+            epoch_loss += loss.item()
             total_cls += loss_cls.item() if CLS else 0.0
             total_error += error_rate
             if batch % self.log_interval == 0 and batch > 0:
@@ -410,7 +413,7 @@ class CellAnnotationModelWrapper():
                 cur_error = total_error / self.log_interval
                 self.logger.info(
                     f"| epoch {epoch:3d} | {batch:3d}/{num_batches:3d} batches | "
-                    f"lr {lr:05.4f} | ms/batch {ms_per_batch:5.2f} | "
+                    f"lr {lr:05.8f} | ms/batch {ms_per_batch:5.2f} | "
                     f"loss {cur_loss:5.2f} | "
                     + (f"cls {cur_cls:5.2f} | " if CLS else "")
                     + (f"err {cur_error:5.2f} | " if CLS else "")
@@ -419,9 +422,25 @@ class CellAnnotationModelWrapper():
                 total_cls = 0
                 total_error = 0
                 start_time = time.time()
+            
+        if find_lr:
+            with open(f"cell_annotation_logs/{self.model_name}", 'a') as f:
+                f.write(f"{scheduler.get_last_lr()[0]} {epoch_loss / num_batches}\n")
+            with open(f"cell_annotation_logs/{self.model_name}", 'r') as f:
+                lines = f.readlines()
+            losses = []
+            lrs = []
+            for line in lines:
+                line_lr, line_loss = line.split()
+                lrs.append(float(line_lr))
+                losses.append(float(line_loss))
+            plt.plot(lrs, losses)
+            plt.xlabel("Learning Rate")
+            plt.ylabel("Training Loss")
+            plt.savefig(f"cell_annotation_logs/{self.model_name}_lr_plot")
 
 
-    def train(self, num_epochs, adata, seed, adata_test1, adata_test2):
+    def train(self, num_epochs, adata, seed, adata_test1, adata_test2, find_lr=False):
 
         if self.wandb:
             init_wandb(self.lr, self.model_name, num_epochs, self.batch_size, self.schedule_ratio, self.schedule_interval, seed)
@@ -459,9 +478,15 @@ class CellAnnotationModelWrapper():
         optimizer = torch.optim.Adam(
             self.model.parameters(), lr=self.lr, eps=self.eps
         )
-        scheduler = torch.optim.lr_scheduler.StepLR(
-            optimizer, self.schedule_interval, gamma=self.schedule_ratio
-        )
+        if find_lr:
+            # If in the lr finding mode.
+            scheduler = torch.optim.lr_scheduler.StepLR(
+                optimizer, 1, gamma=5
+            )
+        else:
+            scheduler = torch.optim.lr_scheduler.StepLR(
+                optimizer, self.schedule_interval, gamma=self.schedule_ratio
+            )
 
         scaler = torch.cuda.amp.GradScaler(enabled=True)
 
@@ -495,7 +520,7 @@ class CellAnnotationModelWrapper():
                 drop_last=False,
             )
 
-            self._train_step(train_loader, optimizer, scheduler, scaler, epoch)
+            self._train_step(train_loader, optimizer, scheduler, scaler, epoch, find_lr)
             val_loss, val_err = self._evaluate(loader=valid_loader, epoch=epoch)
             _, _, test_results1 = self.test(adata_test1, eval_batch_size=self.eval_batch_size)
             _, _, test_results2 = self.test(adata_test2, eval_batch_size=self.eval_batch_size)

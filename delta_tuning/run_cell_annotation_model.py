@@ -73,6 +73,7 @@ def main():
     parser.add_argument("--wandb", action='store_true', help="Whether to use wandb for logging")
     parser.add_argument("--delta_adapter", action='store_true', help="Path to the delta tuning config file")
     parser.add_argument("--adapter_bottleneck_dim", default=24, type=int)
+    parser.add_argument("--find_lr", action="store_true", help="Turns on the learning rate finder. The lr argument is the starting lr in that case, and it should be a negative power of 10.")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -139,7 +140,7 @@ def main():
         cam.finetune_cls_decoder()
 
     if args.train:
-        cam.train(args.epochs, adata_train, args.seed, adata_test1=adata_test, adata_test2=adata_test2)
+        cam.train(args.epochs, adata_train, args.seed, adata_test1=adata_test, adata_test2=adata_test2, find_lr=args.find_lr)
     
     _, _, results = cam.test(adata_test)
     
@@ -153,3 +154,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+# %%
