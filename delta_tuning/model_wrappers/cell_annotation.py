@@ -352,7 +352,7 @@ class CellAnnotationModelWrapper():
 
         num_batches = len(data_loader)
         epoch_loss = 0
-        cur_loss = 0
+        cur_loss = np.inf
         for batch, batch_data in enumerate(data_loader):
             input_gene_ids = batch_data["gene_ids"].to(self.device)
             input_values = batch_data["values"].to(self.device)
