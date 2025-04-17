@@ -31,7 +31,8 @@ BATCH_SIZE = 32
 EVAL_BATCH_SIZE = 64
 LOG_INTERVAL = 100
 RETRAINED_MODELS_DIR = "retrained_models/"
-
+EARLY_STOPPING_EPOCHS_AVG = 10
+EARLY_STOPPING_PATIENCE = 10
 
 
 # TODO: move to outer file
@@ -498,6 +499,10 @@ class CellAnnotationModelWrapper():
                     if p.grad is not None:
                         p.grad.data = p.grad.data.cuda()
 
+        # for early stopping
+        last_eval_losses = np.zeros(EARLY_STOPPING_EPOCHS_AVG)
+        early_stopping_counter = 0
+
         for epoch in range(1, num_epochs + 1):
             epoch_start_time = time.time()
             train_data_pt, valid_data_pt = self._prepare_data_for_train(
@@ -522,6 +527,17 @@ class CellAnnotationModelWrapper():
 
             self._train_step(train_loader, optimizer, scheduler, scaler, epoch, find_lr)
             val_loss, val_err = self._evaluate(loader=valid_loader, epoch=epoch)
+
+            # Early stopping mechanism
+            prev_eval_loss_avg = np.sum(last_eval_losses) / np.min(EARLY_STOPPING_EPOCHS_AVG, epoch)
+            last_eval_losses[(epoch - 1) % EARLY_STOPPING_EPOCHS_AVG] = val_loss
+            curr_eval_loss_avg = np.sum(last_eval_losses) / np.min(EARLY_STOPPING_EPOCHS_AVG, epoch)
+            if curr_eval_loss_avg >= prev_eval_loss_avg:
+                early_stopping_counter += 1
+            if early_stopping_counter >= EARLY_STOPPING_PATIENCE:
+                break
+
+
             _, _, test_results1 = self.test(adata_test1, eval_batch_size=self.eval_batch_size)
             _, _, test_results2 = self.test(adata_test2, eval_batch_size=self.eval_batch_size)
             self.logger.info(

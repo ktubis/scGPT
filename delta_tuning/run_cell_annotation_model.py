@@ -66,7 +66,7 @@ def main():
     parser.add_argument("--test_data", type=str, default="Muraro", help="Which dataset to use as the test data")
     parser.add_argument("--max_seq_len", type=int, default=301, help="Maximum sequence length")
     parser.add_argument("--train", action='store_true', help="Whether to train the model or not")
-    parser.add_argument("--epochs", type=int, default=10, help="Number of epochs to train the model")
+    parser.add_argument("--epochs", type=int, default=1000, help="Number of epochs to train the model")
     parser.add_argument("--model_name", type=str, default="awesome_model", help="The name of the model to be saved")
     parser.add_argument("--finetune", action='store_true', help="Whether to finetune the model or not")
     parser.add_argument("--lr", type=float, default=1e-4)
