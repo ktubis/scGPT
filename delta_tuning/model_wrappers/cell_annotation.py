@@ -532,9 +532,9 @@ class CellAnnotationModelWrapper():
             val_loss, val_err = self._evaluate(loader=valid_loader, epoch=epoch)
 
             # Early stopping mechanism
-            prev_eval_loss_avg = np.sum(last_eval_losses) / np.min(EARLY_STOPPING_EPOCHS_AVG, epoch)
+            prev_eval_loss_avg = np.sum(last_eval_losses) / np.minimum(EARLY_STOPPING_EPOCHS_AVG, epoch)
             last_eval_losses[(epoch - 1) % EARLY_STOPPING_EPOCHS_AVG] = val_loss
-            curr_eval_loss_avg = np.sum(last_eval_losses) / np.min(EARLY_STOPPING_EPOCHS_AVG, epoch)
+            curr_eval_loss_avg = np.sum(last_eval_losses) / np.minimum(EARLY_STOPPING_EPOCHS_AVG, epoch)
             if curr_eval_loss_avg >= prev_eval_loss_avg:
                 early_stopping_counter += 1
             if early_stopping_counter >= EARLY_STOPPING_PATIENCE:
