@@ -84,7 +84,9 @@ def init_wandb(lr, model_name, epochs, batch_size, schedule_ratio, schedule_inte
         config=config,
         project="cell_annotation",
         reinit=True,
-        settings=wandb.Settings(start_method="fork"))
+        settings=wandb.Settings(start_method="fork"),
+        mode='offline'
+    )
 
 
 class CellAnnotationModelWrapper():
