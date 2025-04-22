@@ -82,7 +82,7 @@ def main():
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--wandb", action='store_true', help="Whether to use wandb for logging")
     parser.add_argument("--find_lr", action="store_true", help="Turns on the learning rate finder. The lr argument is the starting lr in that case, and it should be a negative power of 10.")
-    parser.addd_argumet("--delta_configs_file", default=None, help="The file that stores the configs of the delta models. Must be a dict of dicts. If None, doesn't add a delta model.")
+    parser.add_argument("--delta_configs_file", default=None, help="The file that stores the configs of the delta models. Must be a dict of dicts. If None, doesn't add a delta model.")
     parser.add_argument("--finetune_all_weights", action='store_true', help="Whether to finetune all the weights.")
     args = parser.parse_args()
 
