@@ -24,7 +24,7 @@ MASK_RATIO = 0.0
 CLS = True
 MASK_VALUE = -1
 LR = 1e-4
-SCHEDULE_INTERVAL = 100
+SCHEDULE_INTERVAL = 20
 EPS = 1e-8
 SCHEDULE_RATIO = 0.9
 BATCH_SIZE = 32
@@ -33,6 +33,7 @@ LOG_INTERVAL = 100
 RETRAINED_MODELS_DIR = "retrained_models/"
 EARLY_STOPPING_EPOCHS_AVG = 10
 EARLY_STOPPING_PATIENCE = 10
+LR_FINDER_LOG_DIR = "cell_annotation_logs/lr_finder/"
 
 
 # TODO: move to outer file
@@ -85,7 +86,8 @@ def init_wandb(lr, model_name, epochs, batch_size, schedule_ratio, schedule_inte
         project="cell_annotation",
         reinit=True,
         settings=wandb.Settings(start_method="fork"),
-        mode='offline'
+        mode='offline',
+        name=config.model_name
     )
 
 
@@ -342,7 +344,7 @@ class CellAnnotationModelWrapper():
 
         return predictions, celltypes_labels, results
 
-    def _train_step(self, data_loader: DataLoader, optimizer, scheduler, scaler, epoch, find_lr):
+    def _train_step(self, data_loader: DataLoader, optimizer, scheduler, scaler, epoch):
 
         self.model.train()
         total_loss = 0.0
@@ -352,7 +354,6 @@ class CellAnnotationModelWrapper():
 
         num_batches = len(data_loader)
         epoch_loss = 0
-        cur_loss = np.inf
         for batch, batch_data in enumerate(data_loader):
             input_gene_ids = batch_data["gene_ids"].to(self.device)
             input_values = batch_data["values"].to(self.device)
@@ -410,20 +411,10 @@ class CellAnnotationModelWrapper():
             total_cls += loss_cls.item() if CLS else 0.0
             total_error += error_rate
 
-            if find_lr:
-                with open(f"cell_annotation_logs/{self.model_name}", 'a') as f:
-                    f.write(f"{scheduler.get_last_lr()[0]} {loss.item()}\n")
-
             if batch % self.log_interval == 0 and batch > 0:
                 lr = scheduler.get_last_lr()[0]
                 ms_per_batch = (time.time() - start_time) * 1000 / self.log_interval
-                prev_loss = cur_loss
                 cur_loss = total_loss / self.log_interval
-
-                # Logic for finding the optimal lr.
-                # Terminate script if the loss is going up
-                if find_lr and prev_loss < cur_loss:
-                    return False
                 
                 cur_cls = total_cls / self.log_interval
                 cur_error = total_error / self.log_interval
@@ -433,12 +424,12 @@ class CellAnnotationModelWrapper():
                     f"loss {cur_loss:5.2f} | "
                     + (f"cls {cur_cls:5.2f} | " if CLS else "")
                     + (f"err {cur_error:5.2f} | " if CLS else "")
-                )
+                )     
                 total_loss = 0
                 total_cls = 0
                 total_error = 0
                 start_time = time.time()
-        return True
+        return total_loss / num_batches
 
 
     def train(self, num_epochs, adata, seed, adata_test1, adata_test2, find_lr=False):
@@ -502,7 +493,7 @@ class CellAnnotationModelWrapper():
         # for early stopping
         last_eval_losses = np.zeros(EARLY_STOPPING_EPOCHS_AVG)
         early_stopping_counter = 0
-
+        prev_epoch_loss = np.inf
         for epoch in range(1, num_epochs + 1):
             epoch_start_time = time.time()
             train_data_pt, valid_data_pt = self._prepare_data_for_train(
@@ -525,10 +516,9 @@ class CellAnnotationModelWrapper():
                 drop_last=False,
             )
 
-            to_continue = self._train_step(train_loader, optimizer, scheduler, scaler, epoch, find_lr)
-            if not to_continue:
-                return
-            
+            epoch_loss = self._train_step(train_loader, optimizer, scheduler, scaler, epoch)
+            with open(LR_FINDER_LOG_DIR + self.model_name, 'a') as f:
+                f.write(f"{scheduler.get_last_lr()} {epoch_loss}\n")
             val_loss, val_err = self._evaluate(loader=valid_loader, epoch=epoch)
 
             # Early stopping mechanism
@@ -557,6 +547,19 @@ class CellAnnotationModelWrapper():
                 f"valid loss/mse {val_loss:5.4f} | err {val_err:5.4f}"
             )
             self.logger.info("-" * 89)
+
+            if not epoch_loss > prev_epoch_loss:
+                with open(LR_FINDER_LOG_DIR + self.model_name, 'r') as f:
+                    lines = f.readlines()
+                lrs = []
+                losses = []
+                for line in lines:
+                    lr, loss = line.split()
+                    lrs.append(lr)
+                    losses.append(loss)
+                plt.plot(lrs, losses)
+                plt.savefig(LR_FINDER_LOG_DIR + self.model_name)
+                return
 
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
