@@ -87,7 +87,7 @@ def init_wandb(lr, model_name, epochs, batch_size, schedule_ratio, schedule_inte
         reinit=True,
         settings=wandb.Settings(start_method="fork"),
         mode='offline',
-        name=config.model_name
+        name=model_name
     )
 
 
