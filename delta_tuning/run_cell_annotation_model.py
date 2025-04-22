@@ -143,6 +143,7 @@ def main():
         for model_name, config in configs.items():
             model_init_params["model_name"] = model_name
             cam = CellAnnotationModelWrapper(**model_init_params)
+            print(cam.model)
             add_delta_model(config, cam.model)
             cam.train(args.epochs, adata_train, args.seed, adata_test1=adata_test, adata_test2=adata_test2, find_lr=args.find_lr)
     elif args.finetune_decoder:
