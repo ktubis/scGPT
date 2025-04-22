@@ -1,0 +1,22 @@
+{
+    "adapter_bott_dim_12":  
+    {
+        "delta_type": "adapter",
+        "bottleneck_dim": 12
+    },
+    "adapter_bott_dim_24":  
+    {
+        "delta_type": "adapter",
+        "bottleneck_dim": 24
+    },
+    "adapter_bott_dim_48":  
+    {
+        "delta_type": "adapter",
+        "bottleneck_dim": 48
+    },
+    "adapter_bott_dim_92":  
+    {
+        "delta_type": "adapter",
+        "bottleneck_dim": 92
+    }
+}
