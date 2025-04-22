@@ -1,0 +1,16 @@
+{"time":"2025-04-17T14:39:03.659564688+02:00","level":"INFO","msg":"stream: starting","core version":"0.19.9","symlink path":"/cluster/home/ktubis/scGPT/scGPT/delta_tuning/wandb/offline-run-20250417_143902-3iswbyjd/logs/debug-core.log"}
+{"time":"2025-04-17T14:39:03.664949028+02:00","level":"ERROR","msg":"monitor: failed to initialize GPU asset: monitor: could not create portfile"}
+{"time":"2025-04-17T14:39:03.670255678+02:00","level":"WARN","msg":"GraphQL client is nil, skipping feature loading"}
+{"time":"2025-04-17T14:39:03.671109797+02:00","level":"INFO","msg":"created new stream","id":"3iswbyjd"}
+{"time":"2025-04-17T14:39:03.671144307+02:00","level":"INFO","msg":"stream: started","id":"3iswbyjd"}
+{"time":"2025-04-17T14:39:03.671400577+02:00","level":"INFO","msg":"handler: started","stream_id":"3iswbyjd"}
+{"time":"2025-04-17T14:39:03.671478276+02:00","level":"INFO","msg":"writer: Do: started","stream_id":"3iswbyjd"}
+{"time":"2025-04-17T14:39:03.671670007+02:00","level":"INFO","msg":"sender: started","stream_id":"3iswbyjd"}
+{"time":"2025-04-17T14:39:03.681521029+02:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-04-17T14:44:25.371756102+02:00","level":"INFO","msg":"stream: closing","id":"3iswbyjd"}
+{"time":"2025-04-17T14:44:25.371956842+02:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-04-17T14:44:25.37276275+02:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-04-17T14:44:25.37291607+02:00","level":"INFO","msg":"handler: closed","stream_id":"3iswbyjd"}
+{"time":"2025-04-17T14:44:25.37293387+02:00","level":"INFO","msg":"writer: Close: closed","stream_id":"3iswbyjd"}
+{"time":"2025-04-17T14:44:25.37296254+02:00","level":"INFO","msg":"sender: closed","stream_id":"3iswbyjd"}
+{"time":"2025-04-17T14:44:25.37318818+02:00","level":"INFO","msg":"stream: closed","id":"3iswbyjd"}

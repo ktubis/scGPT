@@ -1,0 +1,89 @@
+{
+  "os": "Linux-5.15.0-136-generic-x86_64-with-glibc2.35",
+  "python": "CPython 3.10.6",
+  "startedAt": "2025-04-17T15:31:08.438905Z",
+  "args": [
+    "--model_name=adapter_lr_finder_bot_dim_128_epochs_30",
+    "--max_seq_len=3001",
+    "--train",
+    "--delta_adapter",
+    "--adapter_bottleneck_dim=128",
+    "--epochs=30",
+    "--find_lr",
+    "--lr=1e-6",
+    "--wandb"
+  ],
+  "program": "/cluster/home/ktubis/scGPT/scGPT/delta_tuning/run_cell_annotation_model.py",
+  "codePath": "delta_tuning/run_cell_annotation_model.py",
+  "git": {
+    "remote": "git@github.com:ktubis/scGPT.git",
+    "commit": "d77c504b241319db7d2eb756be78f289c5ea00aa"
+  },
+  "root": "/cluster/home/ktubis/scGPT/scGPT/delta_tuning",
+  "host": "gpu-biomed-05",
+  "executable": "/usr/bin/python",
+  "codePathLocal": "run_cell_annotation_model.py",
+  "cpu_count": 124,
+  "cpu_count_logical": 124,
+  "disk": {
+    "/": {
+      "total": "16777216",
+      "used": "12288"
+    }
+  },
+  "memory": {
+    "total": "511609421824"
+  },
+  "cpu": {
+    "count": 124,
+    "countLogical": 124
+  },
+  "slurm": {
+    "cluster_name": "slurm_cluster",
+    "cpus_on_node": "1",
+    "distribution": "cyclic",
+    "gtids": "0",
+    "job_account": "boeva",
+    "job_cpus_per_node": "1",
+    "job_gid": "527232",
+    "job_id": "6127316",
+    "job_name": "singularity",
+    "job_nodelist": "gpu-biomed-05",
+    "job_num_nodes": "1",
+    "job_partition": "gpu",
+    "job_qos": "normal",
+    "job_uid": "645933",
+    "job_user": "ktubis",
+    "jobid": "6127316",
+    "launch_node_ipaddr": "10.215.94.20",
+    "localid": "0",
+    "nnodes": "1",
+    "nodeid": "0",
+    "nodelist": "gpu-biomed-05",
+    "nprocs": "1",
+    "ntasks": "1",
+    "prio_process": "1",
+    "procid": "0",
+    "pty_port": "33039",
+    "pty_win_col": "135",
+    "pty_win_row": "40",
+    "srun_comm_host": "10.215.94.20",
+    "srun_comm_port": "34921",
+    "step_gpus": "4",
+    "step_id": "0",
+    "step_launcher_port": "34921",
+    "step_nodelist": "gpu-biomed-05",
+    "step_num_nodes": "1",
+    "step_num_tasks": "1",
+    "step_tasks_per_node": "1",
+    "stepid": "0",
+    "submit_dir": "/cluster/home/ktubis/scGPT/scGPT/delta_tuning",
+    "submit_host": "login-biomed-01",
+    "task_pid": "2144707",
+    "tasks_per_node": "1",
+    "topology_addr": "gpu-biomed-05",
+    "topology_addr_pattern": "node",
+    "umask": "0027",
+    "working_cluster": "slurm_cluster:login-biomed-01:6817:8704:109"
+  }
+}

@@ -1,0 +1,80 @@
+15:06:36-scGPT-INFO-_train_step: | epoch   1 | 100/342 batches | lr 0.00010000 | ms/batch 931.38 | loss  1.78 | cls  1.78 | err  0.66 | 
+15:08:05-scGPT-INFO-_train_step: | epoch   1 | 200/342 batches | lr 0.00010000 | ms/batch 886.37 | loss  1.20 | cls  1.20 | err  0.49 | 
+15:09:34-scGPT-INFO-_train_step: | epoch   1 | 300/342 batches | lr 0.00010000 | ms/batch 886.49 | loss  0.62 | cls  0.62 | err  0.18 | 
+15:10:38-scGPT-INFO-train: Test results on Muraro: {'test/accuracy': 0.7709707822808671, 'test/precision': 0.33095185239914193, 'test/recall': 0.3301858540350836, 'test/macro_f1': 0.3286299763309014}
+15:10:38-scGPT-INFO-train: Test results on Xin: {'test/accuracy': 0.9178743961352657, 'test/precision': 0.5203922794256923, 'test/recall': 0.509629543040208, 'test/macro_f1': 0.5080740502973194}
+15:10:38-scGPT-INFO-train: -----------------------------------------------------------------------------------------
+15:10:38-scGPT-INFO-train: | end of epoch   1 | time: 337.17s | valid loss/mse 0.4707 | err 0.1571
+15:10:38-scGPT-INFO-train: -----------------------------------------------------------------------------------------
+15:10:38-scGPT-INFO-train: Best model with score 0.4707
+15:12:11-scGPT-INFO-_train_step: | epoch   2 | 100/342 batches | lr 0.00010000 | ms/batch 897.14 | loss  0.48 | cls  0.48 | err  0.15 | 
+15:13:39-scGPT-INFO-_train_step: | epoch   2 | 200/342 batches | lr 0.00010000 | ms/batch 886.17 | loss  0.40 | cls  0.40 | err  0.13 | 
+15:15:08-scGPT-INFO-_train_step: | epoch   2 | 300/342 batches | lr 0.00010000 | ms/batch 886.57 | loss  0.37 | cls  0.37 | err  0.11 | 
+15:16:12-scGPT-INFO-train: Test results on Muraro: {'test/accuracy': 0.8100848256361922, 'test/precision': 0.4187900654183989, 'test/recall': 0.3973933310860197, 'test/macro_f1': 0.4074981280016001}
+15:16:12-scGPT-INFO-train: Test results on Xin: {'test/accuracy': 0.9779158040027606, 'test/precision': 0.9367364414495563, 'test/recall': 0.9112937287336358, 'test/macro_f1': 0.9210389217808745}
+15:16:12-scGPT-INFO-train: -----------------------------------------------------------------------------------------
+15:16:12-scGPT-INFO-train: | end of epoch   2 | time: 333.93s | valid loss/mse 0.3589 | err 0.1020
+15:16:12-scGPT-INFO-train: -----------------------------------------------------------------------------------------
+15:16:12-scGPT-INFO-train: Best model with score 0.3589
+15:17:45-scGPT-INFO-_train_step: | epoch   3 | 100/342 batches | lr 0.00010000 | ms/batch 897.16 | loss  0.33 | cls  0.33 | err  0.10 | 
+15:19:14-scGPT-INFO-_train_step: | epoch   3 | 200/342 batches | lr 0.00010000 | ms/batch 886.83 | loss  0.31 | cls  0.31 | err  0.09 | 
+15:20:42-scGPT-INFO-_train_step: | epoch   3 | 300/342 batches | lr 0.00010000 | ms/batch 887.03 | loss  0.31 | cls  0.31 | err  0.09 | 
+15:21:46-scGPT-INFO-train: Test results on Muraro: {'test/accuracy': 0.8520263901979265, 'test/precision': 0.34753214287633344, 'test/recall': 0.3438715221125689, 'test/macro_f1': 0.3445246084578099}
+15:21:46-scGPT-INFO-train: Test results on Xin: {'test/accuracy': 0.9841269841269841, 'test/precision': 0.7742139404006196, 'test/recall': 0.7564530490552939, 'test/macro_f1': 0.7638057201735309}
+15:21:46-scGPT-INFO-train: -----------------------------------------------------------------------------------------
+15:21:46-scGPT-INFO-train: | end of epoch   3 | time: 334.27s | valid loss/mse 0.2982 | err 0.0872
+15:21:46-scGPT-INFO-train: -----------------------------------------------------------------------------------------
+15:21:46-scGPT-INFO-train: Best model with score 0.2982
+15:23:19-scGPT-INFO-_train_step: | epoch   4 | 100/342 batches | lr 0.00010000 | ms/batch 897.22 | loss  0.29 | cls  0.29 | err  0.08 | 
+15:24:48-scGPT-INFO-_train_step: | epoch   4 | 200/342 batches | lr 0.00010000 | ms/batch 886.11 | loss  0.25 | cls  0.25 | err  0.07 | 
+15:26:17-scGPT-INFO-_train_step: | epoch   4 | 300/342 batches | lr 0.00010000 | ms/batch 886.56 | loss  0.24 | cls  0.24 | err  0.06 | 
+15:27:20-scGPT-INFO-train: Test results on Muraro: {'test/accuracy': 0.8638077285579642, 'test/precision': 0.4270735494131289, 'test/recall': 0.43453311215047213, 'test/macro_f1': 0.43056612132524036}
+15:27:20-scGPT-INFO-train: Test results on Xin: {'test/accuracy': 0.9834368530020704, 'test/precision': 0.7716111215128253, 'test/recall': 0.7397566892257839, 'test/macro_f1': 0.7524468955953039}
+15:27:20-scGPT-INFO-train: -----------------------------------------------------------------------------------------
+15:27:20-scGPT-INFO-train: | end of epoch   4 | time: 333.54s | valid loss/mse 0.2479 | err 0.0452
+15:27:20-scGPT-INFO-train: -----------------------------------------------------------------------------------------
+15:27:20-scGPT-INFO-train: Best model with score 0.2479
+15:28:53-scGPT-INFO-_train_step: | epoch   5 | 100/342 batches | lr 0.00010000 | ms/batch 896.74 | loss  0.17 | cls  0.17 | err  0.04 | 
+15:30:22-scGPT-INFO-_train_step: | epoch   5 | 200/342 batches | lr 0.00010000 | ms/batch 886.07 | loss  0.16 | cls  0.16 | err  0.04 | 
+15:31:51-scGPT-INFO-_train_step: | epoch   5 | 300/342 batches | lr 0.00010000 | ms/batch 886.54 | loss  0.21 | cls  0.21 | err  0.05 | 
+15:32:54-scGPT-INFO-train: Test results on Muraro: {'test/accuracy': 0.8628652214891611, 'test/precision': 0.40786110523747104, 'test/recall': 0.39932001804063155, 'test/macro_f1': 0.40326588268874414}
+15:32:54-scGPT-INFO-train: Test results on Xin: {'test/accuracy': 0.9917184265010351, 'test/precision': 0.9796617521362195, 'test/recall': 0.964281693238751, 'test/macro_f1': 0.971793016599312}
+15:32:54-scGPT-INFO-train: -----------------------------------------------------------------------------------------
+15:32:54-scGPT-INFO-train: | end of epoch   5 | time: 333.70s | valid loss/mse 0.1669 | err 0.0354
+15:32:54-scGPT-INFO-train: -----------------------------------------------------------------------------------------
+15:32:54-scGPT-INFO-train: Best model with score 0.1669
+15:34:27-scGPT-INFO-_train_step: | epoch   6 | 100/342 batches | lr 0.00010000 | ms/batch 896.63 | loss  0.15 | cls  0.15 | err  0.04 | 
+15:35:56-scGPT-INFO-_train_step: | epoch   6 | 200/342 batches | lr 0.00010000 | ms/batch 886.31 | loss  0.14 | cls  0.14 | err  0.04 | 
+15:37:24-scGPT-INFO-_train_step: | epoch   6 | 300/342 batches | lr 0.00010000 | ms/batch 887.32 | loss  0.17 | cls  0.17 | err  0.04 | 
+15:38:28-scGPT-INFO-train: Test results on Muraro: {'test/accuracy': 0.8609802073515551, 'test/precision': 0.40979695055186355, 'test/recall': 0.39868250873613637, 'test/macro_f1': 0.40393649974090773}
+15:38:28-scGPT-INFO-train: Test results on Xin: {'test/accuracy': 0.9951690821256038, 'test/precision': 0.9898159129582839, 'test/recall': 0.9790374296260224, 'test/macro_f1': 0.9843039257287225}
+15:38:28-scGPT-INFO-train: -----------------------------------------------------------------------------------------
+15:38:28-scGPT-INFO-train: | end of epoch   6 | time: 333.61s | valid loss/mse 0.1976 | err 0.0329
+15:38:28-scGPT-INFO-train: -----------------------------------------------------------------------------------------
+15:40:01-scGPT-INFO-_train_step: | epoch   7 | 100/342 batches | lr 0.00010000 | ms/batch 896.82 | loss  0.14 | cls  0.14 | err  0.03 | 
+15:41:29-scGPT-INFO-_train_step: | epoch   7 | 200/342 batches | lr 0.00010000 | ms/batch 886.10 | loss  0.14 | cls  0.14 | err  0.03 | 
+15:42:58-scGPT-INFO-_train_step: | epoch   7 | 300/342 batches | lr 0.00010000 | ms/batch 886.15 | loss  0.14 | cls  0.14 | err  0.03 | 
+15:44:01-scGPT-INFO-train: Test results on Muraro: {'test/accuracy': 0.848727615457116, 'test/precision': 0.394265507185024, 'test/recall': 0.3982499000794958, 'test/macro_f1': 0.39465542116045077}
+15:44:01-scGPT-INFO-train: Test results on Xin: {'test/accuracy': 0.9924085576259489, 'test/precision': 0.7695452021538978, 'test/recall': 0.7942454622197002, 'test/macro_f1': 0.781153676515285}
+15:44:01-scGPT-INFO-train: -----------------------------------------------------------------------------------------
+15:44:01-scGPT-INFO-train: | end of epoch   7 | time: 333.52s | valid loss/mse 0.1797 | err 0.0411
+15:44:01-scGPT-INFO-train: -----------------------------------------------------------------------------------------
+15:45:35-scGPT-INFO-_train_step: | epoch   8 | 100/342 batches | lr 0.00010000 | ms/batch 896.85 | loss  0.12 | cls  0.12 | err  0.03 | 
+15:47:03-scGPT-INFO-_train_step: | epoch   8 | 200/342 batches | lr 0.00010000 | ms/batch 886.20 | loss  0.11 | cls  0.11 | err  0.03 | 
+15:48:32-scGPT-INFO-_train_step: | epoch   8 | 300/342 batches | lr 0.00010000 | ms/batch 886.14 | loss  0.13 | cls  0.13 | err  0.03 | 
+15:49:35-scGPT-INFO-train: Test results on Muraro: {'test/accuracy': 0.8440150801131009, 'test/precision': 0.4028109140019073, 'test/recall': 0.3919087099853786, 'test/macro_f1': 0.3957138222700111}
+15:49:35-scGPT-INFO-train: Test results on Xin: {'test/accuracy': 0.9903381642512077, 'test/precision': 0.6472960538177929, 'test/recall': 0.6464708946382668, 'test/macro_f1': 0.6462157252606696}
+15:49:35-scGPT-INFO-train: -----------------------------------------------------------------------------------------
+15:49:35-scGPT-INFO-train: | end of epoch   8 | time: 333.70s | valid loss/mse 0.2402 | err 0.0419
+15:49:35-scGPT-INFO-train: -----------------------------------------------------------------------------------------
+15:51:08-scGPT-INFO-_train_step: | epoch   9 | 100/342 batches | lr 0.00010000 | ms/batch 896.94 | loss  0.12 | cls  0.12 | err  0.03 | 
+15:52:37-scGPT-INFO-_train_step: | epoch   9 | 200/342 batches | lr 0.00010000 | ms/batch 886.13 | loss  0.13 | cls  0.13 | err  0.03 | 
+15:54:05-scGPT-INFO-_train_step: | epoch   9 | 300/342 batches | lr 0.00010000 | ms/batch 887.35 | loss  0.11 | cls  0.11 | err  0.03 | 
+15:55:09-scGPT-INFO-train: Test results on Muraro: {'test/accuracy': 0.8628652214891611, 'test/precision': 0.4622616687666727, 'test/recall': 0.4681287243948653, 'test/macro_f1': 0.464716801174825}
+15:55:09-scGPT-INFO-train: Test results on Xin: {'test/accuracy': 0.9937888198757764, 'test/precision': 0.9866026974223231, 'test/recall': 0.9805945533993992, 'test/macro_f1': 0.9835626864124701}
+15:55:09-scGPT-INFO-train: -----------------------------------------------------------------------------------------
+15:55:09-scGPT-INFO-train: | end of epoch   9 | time: 333.61s | valid loss/mse 0.2095 | err 0.0362
+15:55:09-scGPT-INFO-train: -----------------------------------------------------------------------------------------
+15:56:42-scGPT-INFO-_train_step: | epoch  10 | 100/342 batches | lr 0.00010000 | ms/batch 896.77 | loss  0.11 | cls  0.11 | err  0.03 | 
+15:58:10-scGPT-INFO-_train_step: | epoch  10 | 200/342 batches | lr 0.00010000 | ms/batch 885.85 | loss  0.10 | cls  0.10 | err  0.02 | 
+15:59:39-scGPT-INFO-_train_step: | epoch  10 | 300/342 batches | lr 0.00010000 | ms/batch 886.18 | loss  0.11 | cls  0.11 | err  0.02 | 

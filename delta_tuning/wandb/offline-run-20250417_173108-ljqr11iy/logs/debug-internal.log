@@ -1,0 +1,16 @@
+{"time":"2025-04-17T17:31:08.575273625+02:00","level":"INFO","msg":"stream: starting","core version":"0.19.9","symlink path":"/cluster/home/ktubis/scGPT/scGPT/delta_tuning/wandb/offline-run-20250417_173108-ljqr11iy/logs/debug-core.log"}
+{"time":"2025-04-17T17:31:08.576599742+02:00","level":"ERROR","msg":"monitor: failed to initialize GPU asset: monitor: could not create portfile"}
+{"time":"2025-04-17T17:31:08.577994059+02:00","level":"WARN","msg":"GraphQL client is nil, skipping feature loading"}
+{"time":"2025-04-17T17:31:08.578560922+02:00","level":"INFO","msg":"created new stream","id":"ljqr11iy"}
+{"time":"2025-04-17T17:31:08.578590642+02:00","level":"INFO","msg":"stream: started","id":"ljqr11iy"}
+{"time":"2025-04-17T17:31:08.578730853+02:00","level":"INFO","msg":"handler: started","stream_id":"ljqr11iy"}
+{"time":"2025-04-17T17:31:08.578768663+02:00","level":"INFO","msg":"writer: Do: started","stream_id":"ljqr11iy"}
+{"time":"2025-04-17T17:31:08.578984675+02:00","level":"INFO","msg":"sender: started","stream_id":"ljqr11iy"}
+{"time":"2025-04-17T17:31:08.587893199+02:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-04-17T18:12:18.320332619+02:00","level":"INFO","msg":"stream: closing","id":"ljqr11iy"}
+{"time":"2025-04-17T18:12:18.32055356+02:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-04-17T18:12:18.321383014+02:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-04-17T18:12:18.321499405+02:00","level":"INFO","msg":"handler: closed","stream_id":"ljqr11iy"}
+{"time":"2025-04-17T18:12:18.321512105+02:00","level":"INFO","msg":"writer: Close: closed","stream_id":"ljqr11iy"}
+{"time":"2025-04-17T18:12:18.321533035+02:00","level":"INFO","msg":"sender: closed","stream_id":"ljqr11iy"}
+{"time":"2025-04-17T18:12:18.321706026+02:00","level":"INFO","msg":"stream: closed","id":"ljqr11iy"}
