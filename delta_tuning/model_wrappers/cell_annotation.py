@@ -548,7 +548,7 @@ class CellAnnotationModelWrapper():
             )
             self.logger.info("-" * 89)
 
-            if not epoch_loss > prev_epoch_loss:
+            if find_lr and (epoch_loss > prev_epoch_loss):
                 with open(LR_FINDER_LOG_DIR + self.model_name, 'r') as f:
                     lines = f.readlines()
                 lrs = []
