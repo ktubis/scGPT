@@ -518,7 +518,7 @@ class CellAnnotationModelWrapper():
 
             epoch_loss = self._train_step(train_loader, optimizer, scheduler, scaler, epoch)
             with open(LR_FINDER_LOG_DIR + self.model_name, 'a') as f:
-                f.write(f"{scheduler.get_last_lr()} {epoch_loss}\n")
+                f.write(f"{scheduler.get_last_lr()[0]} {epoch_loss}\n")
             val_loss, val_err = self._evaluate(loader=valid_loader, epoch=epoch)
 
             # Early stopping mechanism
@@ -560,6 +560,7 @@ class CellAnnotationModelWrapper():
                 plt.plot(lrs, losses)
                 plt.savefig(LR_FINDER_LOG_DIR + self.model_name)
                 return
+            prev_epoch_loss = epoch_loss
 
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
@@ -568,7 +569,6 @@ class CellAnnotationModelWrapper():
 
             scheduler.step()
 
-        #TODO: save the model. Also add intermediate saving steps.
 
     def finetune_cls_decoder(self):
         for param in self.model.parameters():
