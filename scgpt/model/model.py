@@ -177,6 +177,9 @@ class TransformerModel(nn.Module):
         # TODO: check if this initialization is helpful and shall we apply to all?
         self.encoder.embedding.weight.data.uniform_(-initrange, initrange)
 
+    def get_input_embeddings(self):
+        return self.encoder.embedding
+
     def _encode(
         self,
         src: Tensor,
