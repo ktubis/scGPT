@@ -63,8 +63,10 @@ def add_delta_model(model_config, cam_model):
             modified_modules = []
             for i in range(cam_model.nlayers):
                 modified_modules.append(f"transformer_encoder.layers.{i}.linear2")
+                model_config["modified_modules"] = modified_modules
         delta_config = AutoDeltaConfig.from_dict(model_config)
         delta_model = AutoDeltaModel.from_config(delta_config, backbone_model=cam_model)
+        print(cam_model)
         delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
 
 
@@ -143,7 +145,6 @@ def main():
         for model_name, config in configs.items():
             model_init_params["model_name"] = model_name
             cam = CellAnnotationModelWrapper(**model_init_params)
-            print(cam.model)
             add_delta_model(config, cam.model)
             cam.train(args.epochs, adata_train, args.seed, adata_test1=adata_test, adata_test2=adata_test2, find_lr=args.find_lr)
     elif args.finetune_decoder:
