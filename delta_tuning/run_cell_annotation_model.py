@@ -16,13 +16,12 @@ import os
 import argparse
 from pathlib import Path
 from datetime import datetime
-#from opendelta import AdapterModel
+from opendelta import AdapterModel, AutoDeltaConfig, AutoDeltaModel
 
 sys.path.insert(0, "../")
 from scgpt.model import TransformerModel
 from scgpt.tokenizer.gene_tokenizer import GeneVocab
 from scgpt.preprocess import Preprocessor
-from OpenDelta.opendelta.auto_delta import AutoDeltaConfig, AutoDeltaModel
 
 #TODO: make a model attributes file for the cell annotation model
 INPUT_LAYER = "X_binned"
