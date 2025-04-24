@@ -16,12 +16,13 @@ import os
 import argparse
 from pathlib import Path
 from datetime import datetime
-from opendelta import AdapterModel, AutoDeltaConfig, AutoDeltaModel
+#from opendelta import AdapterModel
 
 sys.path.insert(0, "../")
 from scgpt.model import TransformerModel
 from scgpt.tokenizer.gene_tokenizer import GeneVocab
 from scgpt.preprocess import Preprocessor
+from OpenDelta.opendelta.auto_delta import AutoDeltaConfig, AutoDeltaModel
 
 #TODO: make a model attributes file for the cell annotation model
 INPUT_LAYER = "X_binned"
@@ -67,6 +68,7 @@ def add_delta_model(model_config, cam_model):
         delta_config = AutoDeltaConfig.from_dict(model_config)
         delta_model = AutoDeltaModel.from_config(delta_config, backbone_model=cam_model)
         print(cam_model)
+        cam_model.to("cuda")
         delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
 
 

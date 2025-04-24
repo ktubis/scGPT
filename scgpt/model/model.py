@@ -25,6 +25,9 @@ except ImportError:
 from .dsbn import DomainSpecificBatchNorm1d
 from .grad_reverse import grad_reverse
 
+class FakeConfig():
+    def __init__(self):
+        self.is_encoder_decoder = False
 
 class TransformerModel(nn.Module):
     def __init__(
@@ -87,6 +90,7 @@ class TransformerModel(nn.Module):
                 )
                 use_fast_transformer = False
         self.use_fast_transformer = use_fast_transformer
+        self.config = FakeConfig()
 
         # TODO: add dropout in the GeneEncoder
         self.encoder = GeneEncoder(ntoken, d_model, padding_idx=vocab[pad_token])
@@ -165,8 +169,8 @@ class TransformerModel(nn.Module):
 
         self.init_weights()
         self.dummy_inputs = {
-            'src': torch.randint(0, 16000, (self.batch_size, self.seq_len)),
-            'values': torch.randint(0, 50, (self.batch_size, self.seq_len), dtype=torch.float),
+            'inputs_ids': torch.randint(0, 16000, (self.batch_size, self.seq_len)),
+            'inputs_embeds': torch.randint(0, 50, (self.batch_size, self.seq_len), dtype=torch.float),
             'src_key_padding_mask': torch.zeros(self.batch_size, self.seq_len, dtype=torch.bool),
             "CLS": True,
         }
@@ -178,26 +182,27 @@ class TransformerModel(nn.Module):
         self.encoder.embedding.weight.data.uniform_(-initrange, initrange)
 
     def get_input_embeddings(self):
-        return self.encoder.embedding
+        return self.encoder.embedding.cpu()
 
     def _encode(
         self,
-        src: Tensor,
-        values: Tensor,
+        inputs_ids: Tensor,
+        inputs_embeds: Tensor,
         src_key_padding_mask: Tensor,
         batch_labels: Optional[Tensor] = None,  # (batch,)
     ) -> Tensor:
         self._check_batch_labels(batch_labels)
 
-        src = self.encoder(src)  # (batch, seq_len, embsize)
-        self.cur_gene_token_embs = src
+        inputs_ids = inputs_ids.int()
+        inputs_ids = self.encoder(inputs_ids)  # (batch, seq_len, embsize)
+        self.cur_gene_token_embs = inputs_ids
 
-        values = self.value_encoder(values)  # (batch, seq_len, embsize)
+        inputs_embeds = self.value_encoder(inputs_embeds)  # (batch, seq_len, embsize)
         if self.input_emb_style == "scaling":
-            values = values.unsqueeze(2)
-            total_embs = src * values
+            inputs_embeds = inputs_embeds.unsqueeze(2)
+            total_embs = inputs_ids * inputs_embeds
         else:
-            total_embs = src + values
+            total_embs = inputs_ids + inputs_embeds
 
         if getattr(self, "dsbn", None) is not None:
             batch_label = int(batch_labels[0].item())
@@ -250,8 +255,8 @@ class TransformerModel(nn.Module):
     def generate(
         self,
         cell_emb: Tensor,
-        src: Tensor,
-        values: Optional[Tensor] = None,
+        inputs_ids: Tensor,
+        inputs_embeds: Optional[Tensor] = None,
         src_key_padding_mask: Optional[Tensor] = None,
         gen_iters: int = 1,
         batch_labels: Optional[Tensor] = None,  # (batch,)
@@ -259,8 +264,8 @@ class TransformerModel(nn.Module):
         """
         Args:
             cell_emb(:obj:`Tensor`): shape (batch, embsize)
-            src(:obj:`Tensor`): shape (batch, seq_len)
-            values(:obj:`Tensor`): shape (batch, seq_len), optional
+            inputs_ids(:obj:`Tensor`): shape (batch, seq_len)
+            inputs_embeds(:obj:`Tensor`): shape (batch, seq_len), optional
             src_key_padding_mask(:obj:`Tensor`): shape (batch, seq_len), optional
             gen_iters(:obj:`int`): number of generation iterations
             batch_labels(:obj:`Tensor`): shape (batch,), optional
@@ -279,17 +284,17 @@ class TransformerModel(nn.Module):
                 cell_emb.shape[0], dtype=torch.long, device=cell_emb.device
             )
 
-        src = self.encoder(src)  # (batch, seq_len, embsize)
+        inputs_ids = self.encoder(inputs_ids)  # (batch, seq_len, embsize)
 
-        if values is not None:
-            values = self.value_encoder(values)  # (batch, seq_len, embsize)
+        if inputs_embeds is not None:
+            inputs_embeds = self.value_encoder(inputs_embeds)  # (batch, seq_len, embsize)
             if self.input_emb_style == "scaling":
-                values = values.unsqueeze(2)
-                total_embs = src * values
+                inputs_embeds = inputs_embeds.unsqueeze(2)
+                total_embs = inputs_ids * inputs_embeds
             else:
-                total_embs = src + values
+                total_embs = inputs_ids + inputs_embeds
         else:
-            total_embs = src
+            total_embs = inputs_ids
 
         if getattr(self, "dsbn", None) is not None:
             batch_label = int(batch_labels[0].item())
@@ -329,8 +334,8 @@ class TransformerModel(nn.Module):
 
     def forward(
         self,
-        src: Tensor,
-        values: Tensor,
+        inputs_ids: Tensor,
+        inputs_embeds: Tensor,
         src_key_padding_mask: Tensor,
         batch_labels: Optional[Tensor] = None,
         CLS: bool = False,
@@ -338,12 +343,13 @@ class TransformerModel(nn.Module):
         MVC: bool = False,
         ECS: bool = False,
         do_sample: bool = False,
+        attention_mask = None,
     ) -> Mapping[str, Tensor]:
         """
         Args:
-            src (:obj:`Tensor`): token ids, shape [batch_size, seq_len]
-            values (:obj:`Tensor`): token values, shape [batch_size, seq_len]
-            src_key_padding_mask (:obj:`Tensor`): mask for src, shape [batch_size,
+            inputs_ids (:obj:`Tensor`): token ids, shape [batch_size, seq_len]
+            inputs_embeds (:obj:`Tensor`): token inputs_embeds, shape [batch_size, seq_len]
+            src_key_padding_mask (:obj:`Tensor`): mask for inputs_ids, shape [batch_size,
                 seq_len]
             batch_labels (:obj:`Tensor`): batch labels, shape [batch_size]
             CLS (:obj:`bool`): if True, return the celltype classification objective
@@ -359,7 +365,7 @@ class TransformerModel(nn.Module):
             dict of output Tensors.
         """
         transformer_output = self._encode(
-            src, values, src_key_padding_mask, batch_labels
+            inputs_ids, inputs_embeds, src_key_padding_mask, batch_labels
         )
         if self.use_batch_labels:
             batch_emb = self.batch_encoder(batch_labels)  # (batch, embsize)
@@ -385,7 +391,7 @@ class TransformerModel(nn.Module):
         if self.explicit_zero_prob:
             output["mlm_zero_probs"] = mlm_output["zero_probs"]
 
-        cell_emb = self._get_cell_emb_from_layer(transformer_output, values)
+        cell_emb = self._get_cell_emb_from_layer(transformer_output, inputs_embeds)
         output["cell_emb"] = cell_emb
 
         if CLS:
@@ -393,7 +399,7 @@ class TransformerModel(nn.Module):
         if CCE:
             cell1 = cell_emb
             transformer_output2 = self._encode(
-                src, values, src_key_padding_mask, batch_labels
+                inputs_ids, inputs_embeds, src_key_padding_mask, batch_labels
             )
             cell2 = self._get_cell_emb_from_layer(transformer_output2)
 
@@ -457,8 +463,8 @@ class TransformerModel(nn.Module):
 
     def encode_batch(
         self,
-        src: Tensor,
-        values: Tensor,
+        inputs_ids: Tensor,
+        inputs_embeds: Tensor,
         src_key_padding_mask: Tensor,
         batch_labels: Optional[Tensor] = None,
         output_to_cpu: bool = True,
@@ -467,8 +473,8 @@ class TransformerModel(nn.Module):
     ) -> Tensor:
         """
         Args:
-            src (Tensor): shape [N, seq_len]
-            values (Tensor): shape [N, seq_len]
+            inputs_ids (Tensor): shape [N, seq_len]
+            inputs_embeds (Tensor): shape [N, seq_len]
             src_key_padding_mask (Tensor): shape [N, seq_len]
             batch_size (int): batch size for encoding
             batch_labels (Tensor): shape [N, n_batch_labels]
@@ -481,7 +487,7 @@ class TransformerModel(nn.Module):
             output Tensor of shape [N, seq_len, embsize]
         """
         print("in encode batch")
-        N = src.size(0)
+        N = inputs_ids.size(0)
         device = next(self.parameters()).device
 
         # initialize the output tensor
@@ -490,15 +496,15 @@ class TransformerModel(nn.Module):
         shape = (
             (N, self.d_model)
             if time_step is not None
-            else (N, src.size(1), self.d_model)
+            else (N, inputs_ids.size(1), self.d_model)
         )
         outputs = array_func(shape, dtype=float32_)
 
         print("self.batch_size", self.batch_size)
         for i in trange(0, N, self.batch_size):
             raw_output = self._encode(
-                src[i : i + self.batch_size].to(device),
-                values[i : i + self.batch_size].to(device),
+                inputs_ids[i : i + self.batch_size].to(device),
+                inputs_embeds[i : i + self.batch_size].to(device),
                 src_key_padding_mask[i : i + self.batch_size].to(device),
                 batch_labels[i : i + self.batch_size].to(device)
                 if batch_labels is not None
@@ -562,15 +568,15 @@ class FastTransformerEncoderWrapper(nn.Module):
 
     @staticmethod
     def build_length_mask(
-        src: Tensor,
+        inputs_ids: Tensor,
         src_key_padding_mask: torch.BoolTensor,
     ) -> "LengthMask":
         from fast_transformers.masking import LengthMask
 
-        seq_len = src.shape[1]
+        seq_len = inputs_ids.shape[1]
         num_paddings = src_key_padding_mask.sum(dim=1)
         actual_seq_len = seq_len - num_paddings  # (N,)
-        length_mask = LengthMask(actual_seq_len, max_len=seq_len, device=src.device)
+        length_mask = LengthMask(actual_seq_len, max_len=seq_len, device=inputs_ids.device)
 
         if src_key_padding_mask[length_mask.bool_matrix].sum() != 0:
             raise ValueError(
@@ -581,21 +587,22 @@ class FastTransformerEncoderWrapper(nn.Module):
 
     def forward(
         self,
-        src: Tensor,
+        inputs_ids: Tensor,
         src_key_padding_mask: torch.BoolTensor,
+        attention_mask = None,
     ) -> Tensor:
         """
         Args:
-            src: Tensor, shape [N, seq_len, embsize]
+            inputs_ids: Tensor, shape [N, seq_len, embsize]
             src_key_padding_mask: Tensor, shape [N, seq_len]
 
         Returns:
             output Tensor of shape [N, seq_len, embsize]
         """
-        if src_key_padding_mask.shape != src.shape[:2]:
+        if src_key_padding_mask.shape != inputs_ids.shape[:2]:
             raise ValueError(
                 f"src_key_padding_mask shape {src_key_padding_mask.shape} "
-                f"does not match first two dims of src shape {src.shape[:2]}"
+                f"does not match first two dims of inputs_ids shape {inputs_ids.shape[:2]}"
             )
 
         if src_key_padding_mask.dtype != torch.bool:
@@ -604,8 +611,8 @@ class FastTransformerEncoderWrapper(nn.Module):
                 f"got {src_key_padding_mask.dtype}"
             )
 
-        length_mask = self.build_length_mask(src, src_key_padding_mask)
-        output = self.fast_transformer_encoder(src, length_mask=length_mask)
+        length_mask = self.build_length_mask(inputs_ids, src_key_padding_mask)
+        output = self.fast_transformer_encoder(inputs_ids, length_mask=length_mask)
         return output
 
 
@@ -626,13 +633,13 @@ class FlashTransformerEncoderLayer(nn.Module):
 
     Examples::
         >>> encoder_layer = nn.TransformerEncoderLayer(d_model=512, nhead=8)
-        >>> src = torch.rand(10, 32, 512)
-        >>> out = encoder_layer(src)
+        >>> inputs_ids = torch.rand(10, 32, 512)
+        >>> out = encoder_layer(inputs_ids)
 
     Alternatively, when ``batch_first`` is ``True``:
         >>> encoder_layer = nn.TransformerEncoderLayer(d_model=512, nhead=8, batch_first=True)
-        >>> src = torch.rand(32, 10, 512)
-        >>> out = encoder_layer(src)
+        >>> inputs_ids = torch.rand(32, 10, 512)
+        >>> out = encoder_layer(inputs_ids)
     """
     __constants__ = ["batch_first"]
 
@@ -692,17 +699,18 @@ class FlashTransformerEncoderLayer(nn.Module):
 
     def forward(
         self,
-        src: Tensor,
+        inputs_ids: Tensor,
         src_mask: Optional[Tensor] = None,
         src_key_padding_mask: Optional[Tensor] = None,
+        attention_mask=None,
         **kwargs,
     ) -> Tensor:
         r"""Pass the input through the encoder layer.
 
         Args:
-            src: the sequence to the encoder layer (required).
-            src_mask: the mask for the src sequence (optional).
-            src_key_padding_mask: the mask for the src keys per batch (optional).
+            inputs_ids: the sequence to the encoder layer (required).
+            src_mask: the mask for the inputs_ids sequence (optional).
+            src_key_padding_mask: the mask for the inputs_ids keys per batch (optional).
 
         Shape:
             see the docs in Transformer class.
@@ -711,7 +719,7 @@ class FlashTransformerEncoderLayer(nn.Module):
             raise ValueError("FlashTransformerEncoderLayer does not support src_mask")
 
         if not src_key_padding_mask.any().item():
-            # no padding tokens in src
+            # no padding tokens in inputs_ids
             src_key_padding_mask_ = None
         else:
             if src_key_padding_mask.dtype != torch.bool:
@@ -720,21 +728,21 @@ class FlashTransformerEncoderLayer(nn.Module):
             src_key_padding_mask_ = ~src_key_padding_mask
 
         if self.norm_scheme == "pre":
-            src = self.norm1(src)
-            src2 = self.self_attn(src, key_padding_mask=src_key_padding_mask_)[0]
-            src = src + self.dropout1(src2)
-            src = self.norm2(src)
-            src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))
-            src = src + self.dropout2(src2)
+            inputs_ids = self.norm1(inputs_ids)
+            inputs_ids2 = self.self_attn(inputs_ids, key_padding_mask=src_key_padding_mask_)[0]
+            inputs_ids = inputs_ids + self.dropout1(inputs_ids2)
+            inputs_ids = self.norm2(inputs_ids)
+            inputs_ids2 = self.linear2(self.dropout(self.activation(self.linear1(inputs_ids))))
+            inputs_ids = inputs_ids + self.dropout2(inputs_ids2)
         else:
-            src2 = self.self_attn(src, key_padding_mask=src_key_padding_mask_)[0]
-            src = src + self.dropout1(src2)
-            src = self.norm1(src)
-            src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))
-            src = src + self.dropout2(src2)
-            src = self.norm2(src)
+            inputs_ids2 = self.self_attn(inputs_ids, key_padding_mask=src_key_padding_mask_)[0]
+            inputs_ids = inputs_ids + self.dropout1(inputs_ids2)
+            inputs_ids = self.norm1(inputs_ids)
+            inputs_ids2 = self.linear2(self.dropout(self.activation(self.linear1(inputs_ids))))
+            inputs_ids = inputs_ids + self.dropout2(inputs_ids2)
+            inputs_ids = self.norm2(inputs_ids)
 
-        return src
+        return inputs_ids
 
 
 class GeneEncoder(nn.Module):
