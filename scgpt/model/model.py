@@ -759,6 +759,7 @@ class GeneEncoder(nn.Module):
         self.enc_norm = nn.LayerNorm(embedding_dim)
 
     def forward(self, x: Tensor) -> Tensor:
+        print("IMPUT TO FORWARD IN GENE ENCODER:", x.dim())
         x = self.embedding(x)  # (batch, seq_len, embsize)
         x = self.enc_norm(x)
         return x
