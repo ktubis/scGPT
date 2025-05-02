@@ -64,10 +64,10 @@ def add_delta_model(model_config, cam_model):
             modified_modules = []
             for i in range(cam_model.nlayers):
                 modified_modules.append(f"transformer_encoder.layers.{i}.linear2")
-                model_config["modified_modules"] = modified_modules
-                delta_model = AdapterModel(backbone_model=cam_model, bottleneck_dim=model_config["bottleneck_dim"], modified_modules=modified_modules)
-                cam_model.to("cuda")
-                delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
+            model_config["modified_modules"] = modified_modules
+            delta_model = AdapterModel(backbone_model=cam_model, bottleneck_dim=model_config["bottleneck_dim"], modified_modules=modified_modules)
+            cam_model.to("cuda")
+            delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
         #delta_config = AutoDeltaConfig.from_dict(model_config)
         #delta_model = AutoDeltaModel.from_config(delta_config, backbone_model=cam_model)
         #cam_model.to("cuda")
@@ -150,7 +150,8 @@ def main():
             with open(args.delta_configs_file, 'r') as f:
                 configs = json.load(f)
             for model_name, config in configs.items():
-                model_init_params["model_name"] = model_name
+                print(model_name, config)
+                model_init_params["model_name"] = model_name + f"_{formatted_time}"
                 cam = CellAnnotationModelWrapper(**model_init_params)
                 add_delta_model(config, cam.model)
                 print(cam.model)
