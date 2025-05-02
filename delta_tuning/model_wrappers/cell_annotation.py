@@ -32,7 +32,7 @@ EVAL_BATCH_SIZE = 64
 LOG_INTERVAL = 100
 RETRAINED_MODELS_DIR = "retrained_models/"
 EARLY_STOPPING_EPOCHS_AVG = 10
-EARLY_STOPPING_PATIENCE = 10
+EARLY_STOPPING_PATIENCE = 3
 LR_FINDER_LOG_DIR = "cell_annotation_logs/lr_finder/"
 
 
@@ -101,7 +101,7 @@ class CellAnnotationModelWrapper():
                             n_cls=num_celltypes, 
                             vocab=vocab, 
                             **config_dict)
-        
+                
         if model_path is not None:
             self.load_model(model_path)
 
@@ -493,6 +493,7 @@ class CellAnnotationModelWrapper():
         last_eval_losses = np.zeros(EARLY_STOPPING_EPOCHS_AVG)
         early_stopping_counter = 0
         prev_epoch_loss = np.inf
+        curr_eval_loss_avg = np.inf
         for epoch in range(1, num_epochs + 1):
             epoch_start_time = time.time()
             train_data_pt, valid_data_pt = self._prepare_data_for_train(
@@ -522,11 +523,13 @@ class CellAnnotationModelWrapper():
             val_loss, val_err = self._evaluate(loader=valid_loader, epoch=epoch)
 
             # Early stopping mechanism
-            prev_eval_loss_avg = np.sum(last_eval_losses) / np.minimum(EARLY_STOPPING_EPOCHS_AVG, epoch)
+            prev_eval_loss_avg = curr_eval_loss_avg
             last_eval_losses[(epoch - 1) % EARLY_STOPPING_EPOCHS_AVG] = val_loss
             curr_eval_loss_avg = np.sum(last_eval_losses) / np.minimum(EARLY_STOPPING_EPOCHS_AVG, epoch)
             if curr_eval_loss_avg >= prev_eval_loss_avg:
                 early_stopping_counter += 1
+            else:
+                early_stopping_counter = 0
             if early_stopping_counter >= EARLY_STOPPING_PATIENCE:
                 break
 
