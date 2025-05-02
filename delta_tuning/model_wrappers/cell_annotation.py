@@ -124,7 +124,6 @@ class CellAnnotationModelWrapper():
         self.model_name = model_name
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
-        self.model_name = model_name
         self.wandb = wandb
 
 
@@ -517,8 +516,9 @@ class CellAnnotationModelWrapper():
             )
 
             epoch_loss = self._train_step(train_loader, optimizer, scheduler, scaler, epoch)
-            with open(LR_FINDER_LOG_DIR + self.model_name, 'a') as f:
-                f.write(f"{scheduler.get_last_lr()[0]} {epoch_loss}\n")
+            if find_lr:
+                with open(LR_FINDER_LOG_DIR + self.model_name, 'a') as f:
+                    f.write(f"{scheduler.get_last_lr()[0]} {epoch_loss}\n")
             val_loss, val_err = self._evaluate(loader=valid_loader, epoch=epoch)
 
             # Early stopping mechanism

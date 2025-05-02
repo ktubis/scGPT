@@ -64,11 +64,13 @@ def add_delta_model(model_config, cam_model):
             for i in range(cam_model.nlayers):
                 modified_modules.append(f"transformer_encoder.layers.{i}.linear2")
                 model_config["modified_modules"] = modified_modules
-        delta_config = AutoDeltaConfig.from_dict(model_config)
-        delta_model = AutoDeltaModel.from_config(delta_config, backbone_model=cam_model)
-        print(cam_model)
-        cam_model.to("cuda")
-        delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
+                delta_model = AdapterModel(backbone_model=cam_model, bottleneck_dim=model_config["bottleneck_dim"], modified_modules=modified_modules)
+                cam_model.to("cuda")
+                delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
+        #delta_config = AutoDeltaConfig.from_dict(model_config)
+        #delta_model = AutoDeltaModel.from_config(delta_config, backbone_model=cam_model)
+        #cam_model.to("cuda")
+        #delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
 
 
 def main():
@@ -147,6 +149,7 @@ def main():
             model_init_params["model_name"] = model_name
             cam = CellAnnotationModelWrapper(**model_init_params)
             add_delta_model(config, cam.model)
+            print(cam.model)
             cam.train(args.epochs, adata_train, args.seed, adata_test1=adata_test, adata_test2=adata_test2, find_lr=args.find_lr)
     elif args.finetune_decoder:
         cam = CellAnnotationModelWrapper(**model_init_params)
