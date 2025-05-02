@@ -127,7 +127,7 @@ def main():
 
     # model_name = args.model.split('/')[-1].split('.')[0]
     if args.inference:
-        model_name = args.model_name
+        model_name = args.model.split('/')[-1].split('.')[0]
     else:
         model_name = args.model_name + f"_{formatted_time}"
 
@@ -145,8 +145,6 @@ def main():
     }
 
     if args.inference:
-        model_init_params["model_path"] = FINETUNED_MOODELS_PATH + args.model
-        model_init_params["model_name"] = args.model
         cam = CellAnnotationModelWrapper(**model_init_params)
     else:
         if args.delta_configs_file:
