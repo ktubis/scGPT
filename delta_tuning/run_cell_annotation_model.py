@@ -27,6 +27,7 @@ from scgpt.preprocess import Preprocessor
 INPUT_LAYER = "X_binned"
 VOCAB_PATH = "../pretrained_models/best_model/vocab.json"
 SEED = 42
+FINETUNED_MOODELS_PATH = "retrained_models/"
 
 
 def set_seed(seed):
@@ -141,7 +142,10 @@ def main():
         "wandb": args.wandb
     }
 
-    if not args.inference:
+    if args.inference:
+        model_init_params["model_path"] = FINETUNED_MOODELS_PATH + args.model_name
+        cam = CellAnnotationModelWrapper(**model_init_params)
+    else:
         if args.delta_configs_file:
             with open(args.delta_configs_file, 'r') as f:
                 configs = json.load(f)
@@ -158,7 +162,7 @@ def main():
         elif args.finetune_all_weights:
             cam = CellAnnotationModelWrapper(**model_init_params)
             cam.train(args.epochs, adata_train, args.seed, adata_test1=adata_test, adata_test2=adata_test2, find_lr=args.find_lr)
-    
+
     _, _, results = cam.test(adata_test)
     
     results_file = Path("results/" + model_name)
