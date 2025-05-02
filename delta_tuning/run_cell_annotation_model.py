@@ -126,7 +126,9 @@ def main():
     formatted_time = datetime.now().strftime('%y%m%d%H%M')
 
     # model_name = args.model.split('/')[-1].split('.')[0]
-    if not args.inference:
+    if args.inference:
+        model_name = args.model_name
+    else:
         model_name = args.model_name + f"_{formatted_time}"
 
     model_init_params = {
