@@ -80,7 +80,6 @@ def main():
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--test_data", type=str, default="Muraro", help="Which dataset to use as the test data")
     parser.add_argument("--max_seq_len", type=int, default=301, help="Maximum sequence length")
-    parser.add_argument("--train", action='store_true', help="Whether to train the model or not")
     parser.add_argument("--epochs", type=int, default=1000, help="Number of epochs to train the model")
     parser.add_argument("--model_name", type=str, default="awesome_model", help="The name of the model to be saved")
     parser.add_argument("--finetune_decoder", action='store_true', help="Whether to finetune only the decoder.")
@@ -89,6 +88,7 @@ def main():
     parser.add_argument("--find_lr", action="store_true", help="Turns on the learning rate finder. The lr argument is the starting lr in that case, and it should be a negative power of 10.")
     parser.add_argument("--delta_configs_file", default=None, help="The file that stores the configs of the delta models. Must be a dict of dicts. If None, doesn't add a delta model.")
     parser.add_argument("--finetune_all_weights", action='store_true', help="Whether to finetune all the weights.")
+    parser.add_argument("--inference", action='store_true', help="Whether to run inference on the given model.")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -124,9 +124,8 @@ def main():
     # Get the current date and time, format as 'yymmddhhmm'
     formatted_time = datetime.now().strftime('%y%m%d%H%M')
 
-    if not args.train:
-        model_name = args.model.split('/')[-1].split('.')[0]
-    else:
+    # model_name = args.model.split('/')[-1].split('.')[0]
+    if not args.inference:
         model_name = args.model_name + f"_{formatted_time}"
 
     model_init_params = {
@@ -142,22 +141,23 @@ def main():
         "wandb": args.wandb
     }
 
-    if args.delta_configs_file:
-        with open(args.delta_configs_file, 'r') as f:
-            configs = json.load(f)
-        for model_name, config in configs.items():
-            model_init_params["model_name"] = model_name
+    if not args.inference:
+        if args.delta_configs_file:
+            with open(args.delta_configs_file, 'r') as f:
+                configs = json.load(f)
+            for model_name, config in configs.items():
+                model_init_params["model_name"] = model_name
+                cam = CellAnnotationModelWrapper(**model_init_params)
+                add_delta_model(config, cam.model)
+                print(cam.model)
+                cam.train(args.epochs, adata_train, args.seed, adata_test1=adata_test, adata_test2=adata_test2, find_lr=args.find_lr)
+        elif args.finetune_decoder:
             cam = CellAnnotationModelWrapper(**model_init_params)
-            add_delta_model(config, cam.model)
-            print(cam.model)
+            cam.finetune_cls_decoder()
             cam.train(args.epochs, adata_train, args.seed, adata_test1=adata_test, adata_test2=adata_test2, find_lr=args.find_lr)
-    elif args.finetune_decoder:
-        cam = CellAnnotationModelWrapper(**model_init_params)
-        cam.finetune_cls_decoder()
-        cam.train(args.epochs, adata_train, args.seed, adata_test1=adata_test, adata_test2=adata_test2, find_lr=args.find_lr)
-    elif args.finetune_all_weights:
-        cam = CellAnnotationModelWrapper(**model_init_params)
-        cam.train(args.epochs, adata_train, args.seed, adata_test1=adata_test, adata_test2=adata_test2, find_lr=args.find_lr)
+        elif args.finetune_all_weights:
+            cam = CellAnnotationModelWrapper(**model_init_params)
+            cam.train(args.epochs, adata_train, args.seed, adata_test1=adata_test, adata_test2=adata_test2, find_lr=args.find_lr)
     
     _, _, results = cam.test(adata_test)
     
