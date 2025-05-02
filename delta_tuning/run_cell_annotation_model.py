@@ -146,6 +146,7 @@ def main():
 
     if args.inference:
         model_init_params["model_path"] = FINETUNED_MOODELS_PATH + args.model_name
+        model_init_params["model_name"] = args.model_name
         cam = CellAnnotationModelWrapper(**model_init_params)
     else:
         if args.delta_configs_file:
