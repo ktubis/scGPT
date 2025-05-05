@@ -153,3 +153,9 @@ references/
 examples/save
 examples/modality_pred/data
 figures/
+delta_tuning/cell_annotation_logs/
+delta_tuning/results/
+delta_tuning/retrained_models/
+delta_tuning/data/
+delta_tuning/bash_scripts/
+delta_tuning/leomed_commands/
