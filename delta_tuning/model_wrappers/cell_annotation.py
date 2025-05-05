@@ -26,7 +26,7 @@ MASK_VALUE = -1
 LR = 1e-4
 SCHEDULE_INTERVAL = 20
 EPS = 1e-8
-SCHEDULE_RATIO = 0.9
+SCHEDULE_RATIO = 0.99
 BATCH_SIZE = 32
 EVAL_BATCH_SIZE = 64
 LOG_INTERVAL = 100
@@ -94,7 +94,7 @@ def init_wandb(lr, model_name, epochs, batch_size, schedule_ratio, schedule_inte
 class CellAnnotationModelWrapper():
 
     def __init__(self, model_path, pad_value, vocab, config_dict, num_batches, num_celltypes, max_seq_len, lr=LR, log_dir="cell_annotation_logs/",
-                 mask_value=MASK_VALUE, mask_ratio=MASK_RATIO, model_name="awesome_model", wandb=False):
+                 mask_value=MASK_VALUE, mask_ratio=MASK_RATIO, model_name="awesome_model", wandb=False, schedule_interval=SCHEDULE_INTERVAL, schedule_ratio=SCHEDULE_RATIO):
         
         self.model = TransformerModel(ntoken=len(vocab), 
                             num_batch_labels=num_batches,
@@ -112,9 +112,9 @@ class CellAnnotationModelWrapper():
         self.pad_token = config_dict["pad_token"]
         self.criterion = nn.CrossEntropyLoss()
         self.lr = lr
-        self.schedule_interval = SCHEDULE_INTERVAL
+        self.schedule_interval = schedule_interval
         self.eps = EPS
-        self.schedule_ratio = SCHEDULE_RATIO
+        self.schedule_ratio = schedule_ratio
         self.batch_size = BATCH_SIZE
         self.eval_batch_size = EVAL_BATCH_SIZE
         self.log_interval = LOG_INTERVAL

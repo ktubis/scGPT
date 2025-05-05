@@ -90,6 +90,8 @@ def main():
     parser.add_argument("--delta_configs_file", default=None, help="The file that stores the configs of the delta models. Must be a dict of dicts. If None, doesn't add a delta model.")
     parser.add_argument("--finetune_all_weights", action='store_true', help="Whether to finetune all the weights.")
     parser.add_argument("--inference", action='store_true', help="Whether to run inference on the given model.")
+    parser.add_argument("--schedule_interval", type=int, default=20, help="The interval at which to schedule the learning rate.")
+    parser.add_argument("--schedule_ratio", type=float, default=0.9, help="The ratio of the learning rate to schedule.")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -141,7 +143,9 @@ def main():
         "num_celltypes": num_celltypes,
         "model_name": model_name,
         "lr": args.lr,
-        "wandb": args.wandb
+        "wandb": args.wandb,
+        "schedule_interval": args.schedule_interval,
+        "schedule_ratio": args.schedule_ratio
     }
 
     if args.inference:
