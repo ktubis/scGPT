@@ -1,1 +1,4 @@
-{"soft_prompt_15": {"delta_type": "soft_prompt", "soft_token_num": 15}, "soft_prompt_30": {"delta_type": "soft_prompt", "soft_token_num": 30}, "soft_prompt_50": {"delta_type": "soft_prompt", "soft_token_num": 50}, "soft_prompt_100": {"delta_type": "soft_prompt", "soft_token_num": 100}}
+{
+    "delta_type": "soft_prompt",
+    "soft_token_num": 20
+}
