@@ -11,6 +11,7 @@ import time
 import warnings
 from sklearn.model_selection import train_test_split
 import wandb
+from collections import namedtuple
 
 sys.path.insert(0, "../")
 from scgpt.tokenizer import tokenize_and_pad_batch, random_mask_value
@@ -34,6 +35,18 @@ RETRAINED_MODELS_DIR = "retrained_models/"
 EARLY_STOPPING_EPOCHS_AVG = 10
 EARLY_STOPPING_PATIENCE = 3
 LR_FINDER_LOG_DIR = "cell_annotation_logs/lr_finder/"
+
+TrainTestSplitResults = namedtuple(
+    "TrainTestSplitResults",
+    [
+        "train_data",
+        "valid_data",
+        "train_celltype_labels",
+        "valid_celltype_labels",
+        "train_batch_labels",
+        "valid_batch_labels",
+    ],
+)
 
 
 # TODO: move to outer file
@@ -69,27 +82,16 @@ def prepare_dataloader(
         pin_memory=True,
     )
     return data_loader
-    
 
-def init_wandb(lr, model_name, epochs, batch_size, schedule_ratio, schedule_interval, seed):
-    config = {
-        "learning_rate": lr,
-        "model_name": model_name,
-        "epochs": epochs,
-        "batch_size": batch_size,
-        "schedule_ratio": schedule_ratio,
-        "schedule_interval": schedule_interval,
-        "seed": seed,
-    }
-    wandb.init(
-        config=config,
-        project="cell_annotation",
-        reinit=True,
-        settings=wandb.Settings(start_method="fork"),
-        mode='offline',
-        name=model_name
-    )
-
+def move_optimizer_params_to_cuda(optimizer):
+        for group in optimizer.param_groups:
+            for p in group['params']:
+                if not p.is_cuda:
+                    print(f"Found optimizer parameter on CPU: {p.shape}")
+                    #p.data = p.data.cuda()
+                    if p.grad is not None:
+                        p.grad.data = p.grad.data.cuda()
+                        
 
 class CellAnnotationModelWrapper():
 
@@ -126,6 +128,8 @@ class CellAnnotationModelWrapper():
         self.model.to(self.device)
         self.wandb = wandb
 
+        print("lr:", self.lr, "schedule_interval:", self.schedule_interval, "schedule_ratio:", self.schedule_ratio)
+
 
     def load_model(self, model_path):
         try:
@@ -147,16 +151,10 @@ class CellAnnotationModelWrapper():
             self.model.load_state_dict(model_dict)
 
 
-    def _prepare_data_for_train(self, train_data, valid_data,
-                     train_batch_labels, valid_batch_labels,
-                     train_celltype_labels, valid_celltype_labels,
-                     gene_ids) -> Tuple[Dict[str, torch.Tensor]]:
-        
-        print(train_data.shape)
-        print(train_data)
+    def _prepare_data_for_train(self, split_data: TrainTestSplitResults, gene_ids) -> Tuple[Dict[str, torch.Tensor]]:
 
         tokenized_train = tokenize_and_pad_batch(
-            train_data,
+            split_data.train_data,
             gene_ids,
             max_len=self.max_seq_len,
             vocab=self.vocab,
@@ -166,7 +164,7 @@ class CellAnnotationModelWrapper():
         )
 
         tokenized_valid = tokenize_and_pad_batch(
-            valid_data,
+            split_data.valid_data,
             gene_ids,
             max_len=self.max_seq_len,
             vocab=self.vocab,
@@ -200,11 +198,11 @@ class CellAnnotationModelWrapper():
             tokenized_valid["values"],
         )
 
-        tensor_batch_labels_train = torch.from_numpy(train_batch_labels).long()
-        tensor_batch_labels_valid = torch.from_numpy(valid_batch_labels).long()
+        tensor_batch_labels_train = torch.from_numpy(split_data.train_batch_labels).long()
+        tensor_batch_labels_valid = torch.from_numpy(split_data.valid_batch_labels).long()
 
-        tensor_celltype_labels_train = torch.from_numpy(train_celltype_labels).long()
-        tensor_celltype_labels_valid = torch.from_numpy(valid_celltype_labels).long()
+        tensor_celltype_labels_train = torch.from_numpy(split_data.train_celltype_labels).long()
+        tensor_celltype_labels_valid = torch.from_numpy(split_data.valid_celltype_labels).long()
 
         train_data_pt = {
             "gene_ids": input_gene_ids_train,
@@ -222,6 +220,25 @@ class CellAnnotationModelWrapper():
         }
 
         return train_data_pt, valid_data_pt
+    
+    # Should be called every epoch, because it randomly selects the genes for each cell
+    def _get_train_valid_data_per_epoch(self, split_data: TrainTestSplitResults, gene_ids):
+        train_data_pt, valid_data_pt = self._prepare_data_for_train(split_data, gene_ids)
+
+        train_loader = prepare_dataloader(
+            train_data_pt,
+            batch_size=self.batch_size,
+            shuffle=False,
+            drop_last=False,
+        )
+
+        valid_loader = prepare_dataloader(
+            valid_data_pt,
+            batch_size=self.eval_batch_size,
+            shuffle=False,
+            drop_last=False,
+        )
+        return train_loader, valid_loader
 
     
     def _evaluate(self, loader: DataLoader, epoch=0, return_raw: bool = False) -> float:
@@ -350,6 +367,7 @@ class CellAnnotationModelWrapper():
         total_cls = 0.0
         total_error = 0.0
         start_time = time.time()
+        total_loss_in_epoch = 0.0
 
         num_batches = len(data_loader)
         epoch_loss = 0
@@ -406,6 +424,7 @@ class CellAnnotationModelWrapper():
                 wandb.log({"train/loss": loss.item(), "train/err": error_rate})
 
             total_loss += loss.item()
+            total_loss_in_epoch += loss.item()
             epoch_loss += loss.item()
             total_cls += loss_cls.item() if CLS else 0.0
             total_error += error_rate
@@ -428,15 +447,11 @@ class CellAnnotationModelWrapper():
                 total_cls = 0
                 total_error = 0
                 start_time = time.time()
-        return total_loss / num_batches
+        return total_loss_in_epoch / num_batches
 
 
-    def train(self, num_epochs, adata, seed, adata_test1, adata_test2, find_lr=False):
-
-        if self.wandb:
-            init_wandb(self.lr, self.model_name, num_epochs, self.batch_size, self.schedule_ratio, self.schedule_interval, seed)
-            wandb.watch(self.model)
-
+    # Need to be called before training, once
+    def _get_split_data(self, adata):
         all_counts = (
             adata.layers[INPUT_LAYER].A
             if issparse(adata.layers[INPUT_LAYER])
@@ -452,19 +467,15 @@ class CellAnnotationModelWrapper():
         genes = adata.var.index.tolist()
         gene_ids = np.array(self.vocab(genes), dtype=int)
 
-        (
-            train_data,
-            valid_data,
-            train_celltype_labels,
-            valid_celltype_labels,
-            train_batch_labels,
-            valid_batch_labels,
-        ) = train_test_split(
+        split_data = TrainTestSplitResults(*train_test_split(
             all_counts, celltypes_labels, batch_ids, test_size=0.1, shuffle=True
-        )
+        ))
+        return split_data, gene_ids
 
+
+    def train(self, num_epochs, adata, seed, adata_test1, adata_test2, find_lr=False):
+        split_data, gene_ids = self._get_split_data(adata)
         best_val_loss = float("inf")
-        #define_wandb_metrcis()
 
         optimizer = torch.optim.Adam(
             self.model.parameters(), lr=self.lr, eps=self.eps
@@ -478,16 +489,8 @@ class CellAnnotationModelWrapper():
             scheduler = torch.optim.lr_scheduler.StepLR(
                 optimizer, self.schedule_interval, gamma=self.schedule_ratio
             )
-
+        move_optimizer_params_to_cuda(optimizer)
         scaler = torch.cuda.amp.GradScaler(enabled=True)
-
-        for group in optimizer.param_groups:
-            for p in group['params']:
-                if not p.is_cuda:
-                    print(f"Found optimizer parameter on CPU: {p.shape}")
-                    #p.data = p.data.cuda()
-                    if p.grad is not None:
-                        p.grad.data = p.grad.data.cuda()
 
         # for early stopping
         last_eval_losses = np.zeros(EARLY_STOPPING_EPOCHS_AVG)
@@ -496,26 +499,8 @@ class CellAnnotationModelWrapper():
         curr_eval_loss_avg = np.inf
         for epoch in range(1, num_epochs + 1):
             epoch_start_time = time.time()
-            train_data_pt, valid_data_pt = self._prepare_data_for_train(
-                train_data, valid_data,
-                train_batch_labels, valid_batch_labels,
-                train_celltype_labels, valid_celltype_labels,
-                gene_ids
-            )
 
-            train_loader = prepare_dataloader(
-                train_data_pt,
-                batch_size=self.batch_size,
-                shuffle=False,
-                drop_last=False,
-            )
-            valid_loader = prepare_dataloader(
-                valid_data_pt,
-                batch_size=self.eval_batch_size,
-                shuffle=False,
-                drop_last=False,
-            )
-
+            train_loader, valid_loader = self._get_train_valid_data_per_epoch(split_data, gene_ids)
             epoch_loss = self._train_step(train_loader, optimizer, scheduler, scaler, epoch)
             if find_lr:
                 with open(LR_FINDER_LOG_DIR + self.model_name, 'a') as f:
@@ -531,7 +516,8 @@ class CellAnnotationModelWrapper():
             else:
                 early_stopping_counter = 0
             if early_stopping_counter >= EARLY_STOPPING_PATIENCE:
-                break
+                # return the value for optuna hyperparameter search
+                return curr_eval_loss_avg
 
 
             _, _, test_results1 = self.test(adata_test1, eval_batch_size=self.eval_batch_size)
