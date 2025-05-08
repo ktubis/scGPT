@@ -35,6 +35,8 @@ RETRAINED_MODELS_DIR = "retrained_models/"
 EARLY_STOPPING_EPOCHS_AVG = 10
 EARLY_STOPPING_PATIENCE = 3
 LR_FINDER_LOG_DIR = "cell_annotation_logs/lr_finder/"
+FIND_LR_PERIOD = 2
+FIND_LR_GAMMA = 3
 
 TrainTestSplitResults = namedtuple(
     "TrainTestSplitResults",
@@ -483,7 +485,7 @@ class CellAnnotationModelWrapper():
         if find_lr:
             # If in the lr finding mode.
             scheduler = torch.optim.lr_scheduler.StepLR(
-                optimizer, 1, gamma=5
+                optimizer, FIND_LR_PERIOD, gamma=FIND_LR_GAMMA
             )
         else:
             scheduler = torch.optim.lr_scheduler.StepLR(
