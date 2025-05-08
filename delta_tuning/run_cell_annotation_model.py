@@ -79,6 +79,16 @@ def get_delta_config(method_name, delta_param):
             "delta_type": "adapter",
             "bottleneck_dim": delta_param,
         }
+    if method_name == "soft_prompt":
+        return {
+            "delta_type": "soft_prompt",
+            "soft_token_num": delta_param,
+        }
+    if method_name == "lora":
+        return {
+            "delta_type": "lora",
+            "lora_r": delta_param,
+        }
 
 def add_delta_model(model_config, cam_model, wandb_config):
     if model_config["delta_type"] == "adapter":
