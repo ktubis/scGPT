@@ -88,7 +88,7 @@ def move_optimizer_params_to_cuda(optimizer):
             for p in group['params']:
                 if not p.is_cuda:
                     print(f"Found optimizer parameter on CPU: {p.shape}")
-                    #p.data = p.data.cuda()
+                    p.data = p.data.cuda()
                     if p.grad is not None:
                         p.grad.data = p.grad.data.cuda()
                         
