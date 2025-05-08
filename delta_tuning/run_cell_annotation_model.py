@@ -136,8 +136,8 @@ def add_tokens_to_vocab(pad_token, vocab):
             vocab.append_token(s)
 
 
-def hyperparameter_search(cam, num_epochs, adata, trial):
-    split_data, gene_ids = cam._get_split_data(adata)
+def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial):
+    split_data, gene_ids = cam._get_split_data(adata_train)
     optimizer = torch.optim.Adam(
         cam.model.parameters(), lr=cam.lr, eps=cam.eps
     )
@@ -152,8 +152,13 @@ def hyperparameter_search(cam, num_epochs, adata, trial):
     for epoch in range(1, num_epochs + 1):
         train_loader, valid_loader = cam._get_train_valid_data_per_epoch(split_data, gene_ids)
         epoch_loss = cam._train_step(train_loader, optimizer, scheduler, scaler, epoch)
-        trial.report(epoch_loss, step=epoch)
         print("epoch loss:", epoch_loss)
+        _, _, test_results = cam.test(adata_test)
+        f1_score = test_results["test/macro_f1"]
+        print("f1 score:", f1_score)
+        trial.report(1 - f1_score, step=epoch)
+
+        # prune if doesn't improve on train in the last past epochs
         if epoch_loss >= prev_epoch_loss - (OPTUNA_PRUNING_PERCENTAGE * prev_epoch_loss) / 100:
             bad_epochs_counter += 1
         else:
