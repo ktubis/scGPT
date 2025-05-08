@@ -80,7 +80,7 @@ def get_delta_config(method_name, delta_param):
             "bottleneck_dim": delta_param,
         }
 
-def add_delta_model(model_config, cam_model):
+def add_delta_model(model_config, cam_model, wandb_config):
     if model_config["delta_type"] == "adapter":
         #modified_modules = []
         #for i in range(cam_model.nlayers):
@@ -90,8 +90,10 @@ def add_delta_model(model_config, cam_model):
                                    modified_modules=model_config["modified_modules"])
         cam_model.to("cuda")
         delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
+        wandb_config["bottleneck_dim"] = model_config["bottleneck_dim"]
     if model_config["delta_type"] == "soft_prompt":
         delta_model = SoftPromptModel(backbone_model=cam_model, soft_token_num=model_config["soft_token_num"])
+        wandb_config["soft_token_num"] = model_config["soft_token_num"]
     if model_config["delta_type"] == "lora":
         modified_modules = []
         for i in range(cam_model.nlayers):
@@ -102,6 +104,7 @@ def add_delta_model(model_config, cam_model):
         delta_model = LoraModel(backbone_model=cam_model, lora_r=model_config["lora_r"], modified_modules=modified_modules)
         cam_model.to("cuda")
         delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
+        wandb_config["lora_r"] = model_config["lora_r"]
 
     trainable_params = sum(p.numel() for p in cam_model.parameters() if p.requires_grad) / sum(p.numel() for p in cam_model.parameters())
     print(f"Trainable parameters: {trainable_params}")
@@ -220,7 +223,7 @@ def find_hyperparams(model_init_params, grid_search_config, num_epochs, adata, d
             cam.finetune_cls_decoder()
         else:
             delta_config = get_delta_config(delta_method, delta_param)
-            add_delta_model(delta_config, cam.model)
+            add_delta_model(delta_config, cam.model, wandb_config)
 
         if log_wandb:
             wandb.watch(cam.model, log="all", log_graph=True)
@@ -234,7 +237,7 @@ def train_model(args, adata_train, adata_test, cam, wandb_config, adata_test2=No
         with open(args.delta_configs_file, 'r') as f:
             delta_config = json.load(f)
         print(delta_config)
-        add_delta_model(delta_config, cam.model)
+        add_delta_model(delta_config, cam.model, wandb_config)
         print(cam.model)
     elif args.finetune_decoder:
         cam.finetune_cls_decoder()
@@ -327,7 +330,7 @@ def main():
             delta_method = delta_config["delta_type"]
         else:
             raise ValueError("Please provide a delta method for hyperparameter search.")
-
+        
         print("Running hyperparameter search...")
         study = optuna.create_study(direction="minimize")
         objective = find_hyperparams(model_init_params, args.hyperparam_search_config, args.epochs, adata_train,

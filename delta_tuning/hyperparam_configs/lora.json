@@ -1,0 +1,10 @@
+{
+    "min_lr": 5e-7,
+    "max_lr": 6e-5,
+    "min_delta_param": 5,
+    "max_delta_param": 30,
+    "min_scheduler_interval": 1,
+    "max_scheduler_interval": 20,
+    "min_scheduler_ratio": 0.1,
+    "max_scheduler_ratio": 0.99
+}
