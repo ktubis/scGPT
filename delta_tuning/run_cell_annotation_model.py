@@ -102,6 +102,9 @@ def add_delta_model(model_config, cam_model):
         delta_model = LoraModel(backbone_model=cam_model, lora_r=model_config["lora_r"], modified_modules=modified_modules)
         cam_model.to("cuda")
         delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
+
+    trainable_params = sum(p.numel() for p in cam_model.parameters() if p.requires_grad) / sum(p.numel() for p in cam_model.parameters())
+    print(f"Trainable parameters: {trainable_params}")
     #delta_config = AutoDeltaConfig.from_dict(model_config)
     #delta_model = AutoDeltaModel.from_config(delta_config, backbone_model=cam_model)
     #cam_model.to("cuda")
