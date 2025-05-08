@@ -1,22 +1,18 @@
 {
-    "adapter_bott_dim_12":  
-    {
-        "delta_type": "adapter",
-        "bottleneck_dim": 12
-    },
-    "adapter_bott_dim_24":  
-    {
-        "delta_type": "adapter",
-        "bottleneck_dim": 24
-    },
-    "adapter_bott_dim_48":  
-    {
-        "delta_type": "adapter",
-        "bottleneck_dim": 48
-    },
-    "adapter_bott_dim_92":  
-    {
-        "delta_type": "adapter",
-        "bottleneck_dim": 92
-    }
+    "delta_type": "adapter",
+    "bottleneck_dim": 12,
+    "modified_modules": [
+        "transformer_encoder.layers.0.linear2",
+        "transformer_encoder.layers.1.linear2",
+        "transformer_encoder.layers.2.linear2",
+        "transformer_encoder.layers.3.linear2",
+        "transformer_encoder.layers.4.linear2",
+        "transformer_encoder.layers.5.linear2",
+        "transformer_encoder.layers.6.linear2",
+        "transformer_encoder.layers.7.linear2",
+        "transformer_encoder.layers.8.linear2",
+        "transformer_encoder.layers.9.linear2",
+        "transformer_encoder.layers.10.linear2",
+        "transformer_encoder.layers.11.linear2"
+    ]
 }
