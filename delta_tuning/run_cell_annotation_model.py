@@ -31,7 +31,8 @@ INPUT_LAYER = "X_binned"
 VOCAB_PATH = "../pretrained_models/best_model/vocab.json"
 SEED = 42
 FINETUNED_MOODELS_PATH = "retrained_models/"
-OPTUNA_PRUNING_EPOCHS = 3
+OPTUNA_PRUNING_EPOCHS = 5
+OPTUNA_PRUNING_PERCENTAGE = 0.05
 
 
 def set_seed(seed):
@@ -149,7 +150,7 @@ def hyperparameter_search(cam, num_epochs, adata, trial):
         epoch_loss = cam._train_step(train_loader, optimizer, scheduler, scaler, epoch)
         trial.report(epoch_loss, step=epoch)
         print("epoch loss:", epoch_loss)
-        if epoch_loss >= prev_epoch_loss:
+        if epoch_loss >= prev_epoch_loss - (OPTUNA_PRUNING_PERCENTAGE * prev_epoch_loss) / 100:
             bad_epochs_counter += 1
         else:
             bad_epochs_counter = 0
