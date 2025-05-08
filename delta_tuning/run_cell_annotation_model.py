@@ -92,12 +92,14 @@ def get_delta_config(method_name, delta_param):
 
 def add_delta_model(model_config, cam_model, wandb_config):
     if model_config["delta_type"] == "adapter":
-        #modified_modules = []
-        #for i in range(cam_model.nlayers):
-        #    modified_modules.append(f"transformer_encoder.layers.{i}.linear2")
-        #model_config["modified_modules"] = modified_modules
+        if "modified_modules" in model_config:
+            modified_modules = model_config["modified_modules"]
+        else:
+            modified_modules = []
+            for i in range(cam_model.nlayers):
+                modified_modules.append(f"transformer_encoder.layers.{i}.linear2")
         delta_model = AdapterModel(backbone_model=cam_model, bottleneck_dim=model_config["bottleneck_dim"],
-                                   modified_modules=model_config["modified_modules"])
+                                   modified_modules=modified_modules)
         cam_model.to("cuda")
         delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
         wandb_config["bottleneck_dim"] = model_config["bottleneck_dim"]
@@ -109,7 +111,6 @@ def add_delta_model(model_config, cam_model, wandb_config):
         for i in range(cam_model.nlayers):
             modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.q_proj_weight")
             modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.v_proj_weight")
-        model_config["modified_modules"] = modified_modules
         print("LEN MODIFIED MODULES:", len(modified_modules))
         delta_model = LoraModel(backbone_model=cam_model, lora_r=model_config["lora_r"], modified_modules=modified_modules)
         cam_model.to("cuda")
