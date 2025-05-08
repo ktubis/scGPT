@@ -18,7 +18,7 @@ from pathlib import Path
 from datetime import datetime
 import optuna
 import wandb
-from OpenDelta.opendelta import AdapterModel
+from OpenDelta.opendelta import AdapterModel, SoftPromptModel, LoraModel
 
 sys.path.insert(0, "../")
 from scgpt.model import TransformerModel
@@ -88,6 +88,18 @@ def add_delta_model(model_config, cam_model):
         delta_model = AdapterModel(backbone_model=cam_model, bottleneck_dim=model_config["bottleneck_dim"], modified_modules=modified_modules)
         cam_model.to("cuda")
         delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
+    if model_config["delta_type"] == "soft_prompt":
+        delta_model = SoftPromptModel(backbone_model=cam_model, soft_token_num=model_config["soft_token_num"])
+    if model_config["delta_type"] == "lora":
+        modified_modules = []
+        for i in range(cam_model.nlayers):
+            modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.q_proj_weight")
+            modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.v_proj_weight")
+        model_config["modified_modules"] = modified_modules
+        print("LEN MODIFIED MODULES:", len(modified_modules))
+        delta_model = LoraModel(backbone_model=cam_model, lora_r=model_config["lora_r"], modified_modules=modified_modules)
+        cam_model.to("cuda")
+        delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
     #delta_config = AutoDeltaConfig.from_dict(model_config)
     #delta_model = AutoDeltaModel.from_config(delta_config, backbone_model=cam_model)
     #cam_model.to("cuda")
@@ -143,6 +155,7 @@ def hyperparameter_search(cam, num_epochs, adata, trial):
             bad_epochs_counter = 0
         if bad_epochs_counter >= OPTUNA_PRUNING_EPOCHS or trial.should_prune():
             raise optuna.exceptions.TrialPruned()
+        scheduler.step()
     # return the loss of the last epoch
     return epoch_loss
         
@@ -211,7 +224,7 @@ def train_model(args, adata_train, adata_test, cam, wandb_config, adata_test2=No
         with open(args.delta_configs_file, 'r') as f:
             delta_config = json.load(f)
         print(delta_config)
-        add_delta_model(delta_config, cam.model, wandb_config)
+        add_delta_model(delta_config, cam.model)
         print(cam.model)
     elif args.finetune_decoder:
         cam.finetune_cls_decoder()
