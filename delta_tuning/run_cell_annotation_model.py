@@ -181,7 +181,7 @@ def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial):
             raise optuna.exceptions.TrialPruned()
         scheduler.step()
     # return the loss of the last epoch
-    return epoch_loss
+    return f1_score
         
 
 def update_model_config(model_config, hyperparams):
@@ -343,7 +343,7 @@ def main():
             raise ValueError("Please provide a delta method for hyperparameter search.")
         
         print("Running hyperparameter search...")
-        study = optuna.create_study(direction="minimize")
+        study = optuna.create_study(direction="maximize")
         objective = find_hyperparams(model_init_params, args.hyperparam_search_config, args.epochs, adata_train, adata_test,
                                         delta_method, wandb_config, log_wandb=args.wandb)
         study.optimize(objective, n_trials=50)
