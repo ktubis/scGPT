@@ -190,11 +190,16 @@ class TransformerModel(nn.Module):
         inputs_embeds: Tensor,
         src_key_padding_mask: Tensor,
         batch_labels: Optional[Tensor] = None,  # (batch,)
+        inputs_embeds_after_encoder: Optional[Tensor] = None,
     ) -> Tensor:
         self._check_batch_labels(batch_labels)
 
-        input_ids = input_ids.int()
-        input_ids = self.encoder(input_ids)  # (batch, seq_len, embsize)
+        # For the soft_prompt delta model
+        if inputs_embeds_after_encoder is None:
+            input_ids = input_ids.int()
+            input_ids = self.encoder(input_ids)  # (batch, seq_len, embsize)
+        else:
+            input_ids = inputs_embeds_after_encoder
         self.cur_gene_token_embs = input_ids
 
         inputs_embeds = self.value_encoder(inputs_embeds)  # (batch, seq_len, embsize)
@@ -344,6 +349,7 @@ class TransformerModel(nn.Module):
         ECS: bool = False,
         do_sample: bool = False,
         attention_mask = None,
+        inputs_embeds_after_encoder: Optional[Tensor] = None,
     ) -> Mapping[str, Tensor]:
         """
         Args:
