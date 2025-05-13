@@ -62,8 +62,6 @@ class SoftPromptLayer(nn.Module):
 
         assert self.num_tokens>0
         self.instantiate(raw_embedding(torch.tensor([0])).shape[-1])
-        self.i = 0
-        self.prev_sum_soft_embeds = 0
 
         # self.all_pseudo_tokens = {}
 
@@ -117,13 +115,6 @@ class SoftPromptLayer(nn.Module):
                     device=real_tokens.device) * pseudo_tokens_value
                     # self.all_pseudo_tokens[expand_key] = pseudo_tokens
                 real_tokens.data = torch.cat([pseudo_tokens, real_tokens], dim=-1)
-
-        self.i += 1
-        if self.i == 1:
-            self.prev_sum_soft_embeds = self.soft_embeds.sum()
-        if self.i % 100 == 0:
-            print("SUM SOFT EMBEDS CHANGE: ", self.prev_sum_soft_embeds - self.soft_embeds.sum())
-            self.prev_sum_soft_embeds = self.soft_embeds.sum()
 
         return args, kwargs
 
