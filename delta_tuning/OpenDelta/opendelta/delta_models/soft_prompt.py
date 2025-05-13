@@ -73,7 +73,7 @@ class SoftPromptLayer(nn.Module):
 
         if 'input_ids' in kwargs:
             input_ids = kwargs['input_ids']
-            kwargs['input_ids'] = None
+            #kwargs['input_ids'] = None
         elif len(args) > 0:
             input_ids = args[0]
             args = args[1:]
