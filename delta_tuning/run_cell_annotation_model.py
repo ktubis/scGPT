@@ -170,7 +170,7 @@ def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial):
         _, _, test_results = cam.test(adata_test)
         f1_score = test_results["test/macro_f1"]
         print("f1 score:", f1_score)
-        trial.report(1 - f1_score, step=epoch)
+        trial.report(f1_score, step=epoch)
 
         # prune if doesn't improve on train in the last past epochs
         if epoch_loss >= prev_epoch_loss - (OPTUNA_PRUNING_PERCENTAGE * prev_epoch_loss) / 100:
@@ -215,6 +215,7 @@ def find_hyperparams(model_init_params, grid_search_config, num_epochs, adata_tr
         }
 
         print(hyperparams)
+        print("delta_param:", delta_param)
 
         wandb_config["lr"] = lr
         wandb_config["schedule_interval"] = schedule_interval
