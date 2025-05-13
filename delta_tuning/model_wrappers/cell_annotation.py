@@ -111,8 +111,6 @@ class CellAnnotationModelWrapper():
 
         self.vocab = vocab
         self.mask_ratio = mask_ratio
-        self.mask_value = mask_value
-        self.pad_value = pad_value
         self.pad_token = config_dict["pad_token"]
         self.criterion = nn.CrossEntropyLoss()
         self.lr = lr
@@ -129,6 +127,14 @@ class CellAnnotationModelWrapper():
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
         self.wandb = wandb
+
+        if config_dict["input_emb_style"] == "category":
+            self.mask_value = config_dict["n_bins"] + 1
+            self.pad_value = config_dict["n_bins"]  # for padding gene expr values
+        else:
+            self.mask_value = mask_value
+            self.pad_value = pad_value
+
 
         print("lr:", self.lr, "schedule_interval:", self.schedule_interval, "schedule_ratio:", self.schedule_ratio)
 

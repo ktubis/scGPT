@@ -80,6 +80,7 @@ class SoftPromptLayer(nn.Module):
         else:
             input_ids = None
 
+
         if 'attention_mask' not in kwargs or kwargs['attention_mask'] is None:
             # infer attention mask
             if input_ids is None:
@@ -99,7 +100,7 @@ class SoftPromptLayer(nn.Module):
         batch_size = inputs_embeds.size(0)
         soft_embeds = self.soft_embeds.repeat(batch_size, 1, 1)
         inputs_embeds = torch.cat([soft_embeds, inputs_embeds], 1)
-        kwargs['inputs_embeds'] = inputs_embeds
+        kwargs['inputs_embeds_after_encoder'] = inputs_embeds
 
         for expand_key in self.other_expand_ids:
             if expand_key in kwargs:
