@@ -371,7 +371,7 @@ class TransformerModel(nn.Module):
             dict of output Tensors.
         """
         transformer_output = self._encode(
-            input_ids, inputs_embeds, src_key_padding_mask, batch_labels
+            input_ids, inputs_embeds, src_key_padding_mask, batch_labels, inputs_embeds_after_encoder
         )
         if self.use_batch_labels:
             batch_emb = self.batch_encoder(batch_labels)  # (batch, embsize)
