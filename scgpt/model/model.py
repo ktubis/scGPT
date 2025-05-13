@@ -213,7 +213,7 @@ class TransformerModel(nn.Module):
             # Pad at the beginning
             inputs_embeds = torch.cat([pad, inputs_embeds], dim=1)
 
-            bool_pad = torch.zeros((batch_size, pad_len, embsize), device=inputs_embeds.device, dtype=torch.bool)
+            bool_pad = torch.zeros((batch_size, pad_len), device=inputs_embeds.device, dtype=torch.bool)
             src_key_padding_mask = torch.cat([bool_pad, src_key_padding_mask], dim=1)
 
         if self.input_emb_style == "scaling":
