@@ -387,7 +387,7 @@ class CellAnnotationModelWrapper():
             src_key_padding_mask = input_gene_ids.eq(self.vocab[self.pad_token])
             with torch.cuda.amp.autocast(enabled=True):
                 output_dict = self.model(
-                    input_values=input_gene_ids,
+                    input_ids=input_gene_ids,
                     inputs_embeds=input_values,
                     src_key_padding_mask=src_key_padding_mask,
                     batch_labels=None,
