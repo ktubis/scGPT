@@ -215,6 +215,7 @@ def find_hyperparams(model_init_params, grid_search_config, num_epochs, adata_tr
         }
 
         print(hyperparams)
+        print("delta_param:", delta_param)
 
         wandb_config["lr"] = lr
         wandb_config["schedule_interval"] = schedule_interval
