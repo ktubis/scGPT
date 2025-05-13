@@ -87,20 +87,20 @@ class SoftPromptLayer(nn.Module):
                 raise RuntimeError("no input ids found")
             kwargs['attention_mask'] = (input_ids != self.pad_id).to(torch.int64)
 
-        if 'inputs_embeds' not in kwargs or kwargs['inputs_embeds'] is None:
+        if 'inputs_embeds_after_encoder' not in kwargs or kwargs['inputs_embeds_after_encoder'] is None:
             try:
-                inputs_embeds = self.raw_embedding(input_ids)
+                inputs_embeds_after_encoder = self.raw_embedding(input_ids)
             except:
                 raise RuntimeError("neither inputs_embeds nor input_ids is specified.")
         else:
-            inputs_embeds = kwargs['inputs_embeds']
+            inputs_embeds_after_encoder = kwargs['inputs_embeds_after_encoder']
 
 
 
-        batch_size = inputs_embeds.size(0)
+        batch_size = inputs_embeds_after_encoder.size(0)
         soft_embeds = self.soft_embeds.repeat(batch_size, 1, 1)
-        inputs_embeds = torch.cat([soft_embeds, inputs_embeds], 1)
-        kwargs['inputs_embeds_after_encoder'] = inputs_embeds
+        inputs_embeds_after_encoder = torch.cat([soft_embeds, inputs_embeds_after_encoder], 1)
+        kwargs['inputs_embeds_after_encoder'] = inputs_embeds_after_encoder
 
         for expand_key in self.other_expand_ids:
             if expand_key in kwargs:
@@ -110,7 +110,7 @@ class SoftPromptLayer(nn.Module):
                 # else:
                 pseudo_tokens_value = self.other_expand_ids[expand_key]
                 pseudo_tokens = torch.ones(
-                    (*real_tokens.shape[:-1], inputs_embeds.shape[-2]-real_tokens.shape[-1]),
+                    (*real_tokens.shape[:-1], inputs_embeds_after_encoder.shape[-2]-real_tokens.shape[-1]),
                     dtype = real_tokens.dtype,
                     device=real_tokens.device) * pseudo_tokens_value
                     # self.all_pseudo_tokens[expand_key] = pseudo_tokens
