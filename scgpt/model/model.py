@@ -203,6 +203,17 @@ class TransformerModel(nn.Module):
         self.cur_gene_token_embs = input_ids
 
         inputs_embeds = self.value_encoder(inputs_embeds)  # (batch, seq_len, embsize)
+        if inputs_embeds_after_encoder is not None:
+            batch_size, seq_len1, embsize = input_ids.shape
+            seq_len2 = inputs_embeds.shape[1]
+            pad_len = seq_len1 - seq_len2
+
+            # Create zero padding
+            pad = torch.zeros((batch_size, pad_len, embsize), device=inputs_embeds.device, dtype=inputs_embeds.dtype)
+
+            # Pad at the beginning
+            inputs_embeds = torch.cat([pad, inputs_embeds], dim=1)
+
         if self.input_emb_style == "scaling":
             inputs_embeds = inputs_embeds.unsqueeze(2)
             total_embs = input_ids * inputs_embeds
