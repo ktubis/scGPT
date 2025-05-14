@@ -183,7 +183,7 @@ class TransformerModel(nn.Module):
         self.encoder.embedding.weight.data.uniform_(-initrange, initrange)
 
     def get_input_embeddings(self):
-        return self.encoder
+        return self.encoder.cpu()
 
     def _encode(
         self,
