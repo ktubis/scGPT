@@ -394,7 +394,9 @@ class TransformerModel(nn.Module):
             print("INPUT IDS:", input_ids)
             print("INPUTS EMBEDS:", inputs_embeds)
             print("SRC KEY PADDING MASK:", src_key_padding_mask)
-            print("INPUTS EMBEDS AFTER ENCODER:", inputs_embeds_after_encoder[0])
+            if inputs_embeds_after_encoder is not None:
+                print("INPUTS IDS AFTER ENCODER[0] shape:", inputs_embeds_after_encoder[0].shape)
+                print("INPUTS IDS AFTER ENCODER:", inputs_embeds_after_encoder[0])
         transformer_output = self._encode(
             input_ids, inputs_embeds, src_key_padding_mask, batch_labels, inputs_embeds_after_encoder
         )
