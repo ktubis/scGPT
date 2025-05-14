@@ -59,6 +59,7 @@ class SoftPromptLayer(nn.Module):
         self.token_init = token_init
         self.device = device
         self.other_expand_ids = other_expand_ids
+        self.i = 0
 
         assert self.num_tokens>0
         self.instantiate(raw_embedding(torch.tensor([0])).shape[-1])
@@ -99,6 +100,9 @@ class SoftPromptLayer(nn.Module):
 
         batch_size = inputs_embeds_after_encoder.size(0)
         soft_embeds = self.soft_embeds.repeat(batch_size, 1, 1)
+        i += 1
+        if i % 100 == 0:
+            print("SOFT EMBEDS:", self.soft_embeds)
         inputs_embeds_after_encoder = torch.cat([soft_embeds, inputs_embeds_after_encoder], 1)
         kwargs['inputs_embeds_after_encoder'] = inputs_embeds_after_encoder
 
