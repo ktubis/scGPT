@@ -74,7 +74,6 @@ class TransformerModel(nn.Module):
         self.cell_emb_style = cell_emb_style
         self.explicit_zero_prob = explicit_zero_prob
         self.norm_scheme = "pre" if pre_norm else "post"
-        self.i = 0
         if self.input_emb_style not in ["category", "continuous", "scaling"]:
             raise ValueError(
                 f"input_emb_style should be one of category, continuous, scaling, "
@@ -199,8 +198,6 @@ class TransformerModel(nn.Module):
         if inputs_embeds_after_encoder is None:
             input_ids = input_ids.int()
             input_ids = self.encoder(input_ids)  # (batch, seq_len, embsize)
-            if self.i % 100 == 0:
-                print("INPUT IDS AFTER ENCODER REGULAR:", input_ids[0])
         else:
             input_ids = inputs_embeds_after_encoder
         self.cur_gene_token_embs = input_ids
@@ -215,9 +212,6 @@ class TransformerModel(nn.Module):
             pad = torch.zeros((batch_size, pad_len, embsize), device=inputs_embeds.device, dtype=inputs_embeds.dtype)
             # Pad at the beginning
             inputs_embeds = torch.cat([pad, inputs_embeds], dim=1)
-            if self.i % 100 == 0:
-                print("INPUTS EMBEDS AFTER ENCODER shape:", inputs_embeds[0].shape)
-                print("INPUTS EMBEDS AFTER ENCODER:", inputs_embeds[0])
 
             bool_pad = torch.zeros((batch_size, pad_len), device=inputs_embeds.device, dtype=torch.bool)
             src_key_padding_mask = torch.cat([bool_pad, src_key_padding_mask], dim=1)
@@ -389,14 +383,6 @@ class TransformerModel(nn.Module):
         Returns:
             dict of output Tensors.
         """
-        self.i +=1
-        if self.i % 100 == 0:
-            print("INPUT IDS:", input_ids)
-            print("INPUTS EMBEDS:", inputs_embeds)
-            print("SRC KEY PADDING MASK:", src_key_padding_mask)
-            if inputs_embeds_after_encoder is not None:
-                print("INPUTS IDS AFTER ENCODER[0] shape:", inputs_embeds_after_encoder[0].shape)
-                print("INPUTS IDS AFTER ENCODER:", inputs_embeds_after_encoder[0])
         transformer_output = self._encode(
             input_ids, inputs_embeds, src_key_padding_mask, batch_labels, inputs_embeds_after_encoder
         )
