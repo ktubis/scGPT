@@ -215,7 +215,9 @@ class TransformerModel(nn.Module):
             pad = torch.zeros((batch_size, pad_len, embsize), device=inputs_embeds.device, dtype=inputs_embeds.dtype)
             # Pad at the beginning
             inputs_embeds = torch.cat([pad, inputs_embeds], dim=1)
-            print("INPUTS EMBEDS AFTER ENCODER:", inputs_embeds[0])
+            if self.i % 100 == 0:
+                print("INPUTS EMBEDS AFTER ENCODER shape:", inputs_embeds[0].shape)
+                print("INPUTS EMBEDS AFTER ENCODER:", inputs_embeds[0])
 
             bool_pad = torch.zeros((batch_size, pad_len), device=inputs_embeds.device, dtype=torch.bool)
             src_key_padding_mask = torch.cat([bool_pad, src_key_padding_mask], dim=1)
