@@ -102,6 +102,7 @@ class SoftPromptLayer(nn.Module):
         soft_embeds = self.soft_embeds.repeat(batch_size, 1, 1)
         self.i += 1
         if self.i % 100 == 0:
+            print("SOFT EMBEDS shape:", self.soft_embeds.shape)
             print("SOFT EMBEDS:", self.soft_embeds)
         inputs_embeds_after_encoder = torch.cat([soft_embeds, inputs_embeds_after_encoder], 1)
         kwargs['inputs_embeds_after_encoder'] = inputs_embeds_after_encoder
