@@ -74,6 +74,7 @@ class TransformerModel(nn.Module):
         self.cell_emb_style = cell_emb_style
         self.explicit_zero_prob = explicit_zero_prob
         self.norm_scheme = "pre" if pre_norm else "post"
+        self.i = 0
         if self.input_emb_style not in ["category", "continuous", "scaling"]:
             raise ValueError(
                 f"input_emb_style should be one of category, continuous, scaling, "
@@ -383,6 +384,12 @@ class TransformerModel(nn.Module):
         Returns:
             dict of output Tensors.
         """
+        self.i +=1
+        if self.i % 100 == 0:
+            print("INPUT IDS:", input_ids)
+            print("INPUTS EMBEDS:", inputs_embeds)
+            print("SRC KEY PADDING MASK:", src_key_padding_mask)
+            print("INPUTS EMBEDS AFTER ENCODER:", inputs_embeds_after_encoder)
         transformer_output = self._encode(
             input_ids, inputs_embeds, src_key_padding_mask, batch_labels, inputs_embeds_after_encoder
         )
