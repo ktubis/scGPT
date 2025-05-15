@@ -331,7 +331,7 @@ def main():
         "schedule_interval": args.schedule_interval,
         "schedule_ratio": args.schedule_ratio,
         "batch_size": args.batch_size,
-        "test_batch_size": args.batch_size
+        "eval_batch_size": args.batch_size
     }
 
     wandb_config = {
