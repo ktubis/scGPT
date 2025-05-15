@@ -110,9 +110,9 @@ def add_delta_model(model_config, cam_model, wandb_config):
     if model_config["delta_type"] == "lora":
         modified_modules = []
         for i in range(cam_model.nlayers):
-            modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.q_proj_weight")
-            modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.v_proj_weight")
-            modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.k_proj_weight")
+            modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.in_proj_weight")
+            #modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.v_proj_weight")
+            #modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.k_proj_weight")
             #modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.out_proj")
         print("LEN MODIFIED MODULES:", len(modified_modules))
         delta_model = LoraModel(backbone_model=cam_model, lora_r=model_config["lora_r"], modified_modules=modified_modules)
