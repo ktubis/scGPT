@@ -293,7 +293,7 @@ def main():
     parser.add_argument("--schedule_interval", type=int, default=20, help="The interval at which to schedule the learning rate.")
     parser.add_argument("--schedule_ratio", type=float, default=0.9, help="The ratio of the learning rate to schedule.")
     parser.add_argument("--hyperparam_search_config", default=None, help="The configuration from which to do hyperparameter search.")
-    parser.add_argument("--freeze_modules", type=[], default=[], help="The modules to freeze. Must be a list of strings.")
+    parser.add_argument("--freeze_modules", type=str, nargs="+", default=[], help="The modules to freeze. Must be a list of strings.")
     args = parser.parse_args()
 
     set_seed(args.seed)
