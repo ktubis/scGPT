@@ -539,6 +539,20 @@ class TransformerModel(nn.Module):
             outputs[i : i + self.batch_size] = output
 
         return outputs
+    
+    def freeze_custom_modules(self, modules):
+        for module in modules:
+            for param in module.parameters():
+                param.requires_grad = False
+
+    def print_trainable_parameters(self):
+        """
+        Print the number of trainable parameters in the model.
+        """
+        num_params = sum(p.numel() for p in self.parameters() if p.requires_grad) / \
+                     sum(p.numel() for p in self.parameters())
+        print(f"Number of trainable parameters: {num_params}")
+
 
 
 def generate_square_subsequent_mask(sz: int) -> Tensor:

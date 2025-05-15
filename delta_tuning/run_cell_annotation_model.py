@@ -121,8 +121,7 @@ def add_delta_model(model_config, cam_model, wandb_config):
         delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
 
 
-    trainable_params = sum(p.numel() for p in cam_model.parameters() if p.requires_grad) / sum(p.numel() for p in cam_model.parameters())
-    print(f"Trainable parameters: {trainable_params}")
+    cam_model.print_trainable_parameters()
     for name, module in cam_model.named_modules():
         print(name, sum(p.numel() for p in module.parameters()))
     #delta_config = AutoDeltaConfig.from_dict(model_config)
@@ -263,6 +262,12 @@ def train_model(args, adata_train, adata_test, cam, wandb_config, adata_test2=No
     else:
         assert (args.finetune_all_weights == True), "If you want to finetune all weights, please set the finetune_decoder flag to True."
         wandb_config["delta_method"] = "all_weights"
+
+    if args.freeze_modules:
+        cam.freeze_modules(args.freeze_modules)
+        cam.print_trainable_parameters()
+        wandb_config["freeze_modules"] = args.freeze_modules
+    
     if args.wandb:
         init_wandb(wandb_config)
         wandb.watch(cam.model, log="all", log_graph=True)
@@ -288,6 +293,7 @@ def main():
     parser.add_argument("--schedule_interval", type=int, default=20, help="The interval at which to schedule the learning rate.")
     parser.add_argument("--schedule_ratio", type=float, default=0.9, help="The ratio of the learning rate to schedule.")
     parser.add_argument("--hyperparam_search_config", default=None, help="The configuration from which to do hyperparameter search.")
+    parser.add_argument("--freeze_modules", type=[], default=[], help="The modules to freeze. Must be a list of strings.")
     args = parser.parse_args()
 
     set_seed(args.seed)
