@@ -327,7 +327,7 @@ def main():
         "num_celltypes": num_celltypes,
         "model_name": model_name,
         "lr": args.lr,
-        "wandb": args.wandb,
+        "log_wandb": args.wandb,
         "schedule_interval": args.schedule_interval,
         "schedule_ratio": args.schedule_ratio,
         "batch_size": args.batch_size,
