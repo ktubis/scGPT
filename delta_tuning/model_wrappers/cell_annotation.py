@@ -98,7 +98,7 @@ def move_optimizer_params_to_cuda(optimizer):
 class CellAnnotationModelWrapper():
 
     def __init__(self, model_path, pad_value, vocab, config_dict, num_batches, num_celltypes, max_seq_len, lr=LR, log_dir="cell_annotation_logs/",
-                 mask_value=MASK_VALUE, mask_ratio=MASK_RATIO, model_name="awesome_model", wandb=False, schedule_interval=SCHEDULE_INTERVAL, schedule_ratio=SCHEDULE_RATIO):
+                 mask_value=MASK_VALUE, mask_ratio=MASK_RATIO, model_name="awesome_model", log_wandb=False, schedule_interval=SCHEDULE_INTERVAL, schedule_ratio=SCHEDULE_RATIO):
         
         self.model = TransformerModel(ntoken=len(vocab), 
                             num_batch_labels=num_batches,
@@ -126,7 +126,7 @@ class CellAnnotationModelWrapper():
         self.model_name = model_name
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
-        self.wandb = wandb
+        self.log_wandb = log_wandb
 
         if config_dict["input_emb_style"] == "category":
             self.mask_value = config_dict["n_bins"] + 1
@@ -281,15 +281,6 @@ class CellAnnotationModelWrapper():
                 total_num += len(input_gene_ids)
                 preds = output_values.argmax(1).cpu().numpy()
                 predictions.append(preds)
-
-        if self.wandb:
-            wandb.log(
-                {
-                    "valid/mse": total_loss / total_num,
-                    "valid/err": total_error / total_num,
-                    "epoch": epoch,
-                }
-            )
 
         if return_raw:
             return np.concatenate(predictions, axis=0)
@@ -565,6 +556,17 @@ class CellAnnotationModelWrapper():
                 best_val_loss = val_loss
                 self.logger.info(f"Best model with score {best_val_loss:5.4f}")
                 torch.save(self.model.state_dict(), RETRAINED_MODELS_DIR + self.model_name + '.pth')
+
+            if self.log_wandb:
+                wandb.log(
+                    {
+                        "train_loss": epoch_loss,
+                        "best_val_loss": best_val_loss,
+                        "val_loss": val_loss,
+                        "test_loss": test_results1["test/macro_f1"],
+                        "epoch": epoch,
+                    }
+                )
 
             scheduler.step()
 
