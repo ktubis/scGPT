@@ -97,7 +97,7 @@ def move_optimizer_params_to_cuda(optimizer):
 
 class CellAnnotationModelWrapper():
 
-    def __init__(self, model_path, pad_value, vocab, config_dict, num_batches, num_celltypes, max_seq_len, lr=LR, log_dir="cell_annotation_logs/",
+    def __init__(self, model_path, pad_value, vocab, config_dict, num_batches, num_celltypes, max_seq_len, lr=LR, batch_size=BATCH_SIZE, eval_batch_size=BATCH_SIZE, log_dir="cell_annotation_logs/",
                  mask_value=MASK_VALUE, mask_ratio=MASK_RATIO, model_name="awesome_model", log_wandb=False, schedule_interval=SCHEDULE_INTERVAL, schedule_ratio=SCHEDULE_RATIO):
         
         self.model = TransformerModel(ntoken=len(vocab), 
@@ -117,8 +117,8 @@ class CellAnnotationModelWrapper():
         self.schedule_interval = schedule_interval
         self.eps = EPS
         self.schedule_ratio = schedule_ratio
-        self.batch_size = BATCH_SIZE
-        self.eval_batch_size = EVAL_BATCH_SIZE
+        self.batch_size = batch_size
+        self.eval_batch_size = eval_batch_size
         self.log_interval = LOG_INTERVAL
         self.logger = scgpt.logger
         scgpt.utils.add_file_handler(self.logger, log_dir + f"{model_name}.log")
