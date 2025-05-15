@@ -141,6 +141,8 @@ class TransformerModel(nn.Module):
             encoder_layers = TransformerEncoderLayer(
                 d_model, nhead, d_hid, dropout, batch_first=True
             )
+            print("KDIM:", encoder_layers.self_attn.kdim)
+            print("VDIM", encoder_layers.self_attn.vdim)
             self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
 
         self.decoder = ExprDecoder(
