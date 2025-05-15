@@ -240,7 +240,7 @@ def find_hyperparams(model_init_params, grid_search_config, num_epochs, adata_tr
         else:
             delta_config = get_delta_config(delta_method, delta_param)
             add_delta_model(delta_config, cam.model, wandb_config)
-            
+
         wandb.watch(cam.model, log="all", log_graph=True)
         return hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial)
     return optuna_objective
@@ -291,6 +291,7 @@ def main():
     parser.add_argument("--schedule_ratio", type=float, default=0.9, help="The ratio of the learning rate to schedule.")
     parser.add_argument("--hyperparam_search_config", default=None, help="The configuration from which to do hyperparameter search.")
     parser.add_argument("--freeze_modules", type=str, nargs="+", default=[], help="The modules to freeze. Must be a list of strings.")
+    parser.add_argument("--batch_size", type=int, default=32, help="The batch size to use for training.")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -328,7 +329,9 @@ def main():
         "lr": args.lr,
         "wandb": args.wandb,
         "schedule_interval": args.schedule_interval,
-        "schedule_ratio": args.schedule_ratio
+        "schedule_ratio": args.schedule_ratio,
+        "batch_size": args.batch_size,
+        "test_batch_size": args.batch_size
     }
 
     wandb_config = {
