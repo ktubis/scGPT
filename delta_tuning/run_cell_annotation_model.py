@@ -195,7 +195,7 @@ def update_model_config(model_config, hyperparams):
     model_config["schedule_ratio"] = hyperparams["schedule_ratio"]
     return model_config
 
-def find_hyperparams(model_init_params, grid_search_config, num_epochs, adata_train, adata_test, delta_method, wandb_config, log_wandb=False):
+def find_hyperparams(model_init_params, grid_search_config, num_epochs, adata_train, adata_test, delta_method, wandb_config):
     def optuna_objective(trial):
         print("trial number:", trial.number)
         with open(grid_search_config, "r") as f:
@@ -228,7 +228,6 @@ def find_hyperparams(model_init_params, grid_search_config, num_epochs, adata_tr
         wandb_config["delta_param"] = delta_param
         wandb_config["model_name"] = f"{wandb_config['model_name']}_{trial.number}"
         init_wandb(wandb_config)
-        log_wandb = True
 
         # Update the model config with the hyperparameters and create model
         update_model_config(model_init_params, hyperparams)
@@ -241,10 +240,8 @@ def find_hyperparams(model_init_params, grid_search_config, num_epochs, adata_tr
         else:
             delta_config = get_delta_config(delta_method, delta_param)
             add_delta_model(delta_config, cam.model, wandb_config)
-
-        if log_wandb:
-            wandb.watch(cam.model, log="all", log_graph=True)
-
+            
+        wandb.watch(cam.model, log="all", log_graph=True)
         return hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial)
     return optuna_objective
 
@@ -341,6 +338,7 @@ def main():
         "schedule_ratio": args.schedule_ratio,
         "schedule_interval": args.schedule_interval,
         "seed": args.seed,
+        "log_wandb": args.wandb,
     }
 
     if args.hyperparam_search_config:
@@ -358,7 +356,7 @@ def main():
         print("Running hyperparameter search...")
         study = optuna.create_study(direction="maximize")
         objective = find_hyperparams(model_init_params, args.hyperparam_search_config, args.epochs, adata_train, adata_test,
-                                        delta_method, wandb_config, log_wandb=args.wandb)
+                                        delta_method, wandb_config)
         study.optimize(objective, n_trials=50)
         best_trial = study.best_trial
         print("Best trial:")
