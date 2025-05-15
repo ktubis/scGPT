@@ -113,12 +113,12 @@ def add_delta_model(model_config, cam_model, wandb_config):
             modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.q_proj_weight")
             modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.v_proj_weight")
             modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.k_proj_weight")
-            modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.out_proj")
+            #modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.out_proj")
         print("LEN MODIFIED MODULES:", len(modified_modules))
         delta_model = LoraModel(backbone_model=cam_model, lora_r=model_config["lora_r"], modified_modules=modified_modules)
         cam_model.to("cuda")
         wandb_config["lora_r"] = model_config["lora_r"]
-        delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
+        delta_model.freeze_module(exclude=['deltas'])#, 'cls_decoder'])
 
 
     cam_model.print_trainable_parameters()
