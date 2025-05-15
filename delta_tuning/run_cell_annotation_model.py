@@ -102,9 +102,11 @@ def add_delta_model(model_config, cam_model, wandb_config):
                                    modified_modules=modified_modules)
         cam_model.to("cuda")
         wandb_config["bottleneck_dim"] = model_config["bottleneck_dim"]
+        delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
     if model_config["delta_type"] == "soft_prompt":
         delta_model = SoftPromptModel(backbone_model=cam_model, soft_token_num=model_config["soft_token_num"])
         wandb_config["soft_token_num"] = model_config["soft_token_num"]
+        delta_model.freeze_module(exclude=['deltas'])
     if model_config["delta_type"] == "lora":
         modified_modules = []
         for i in range(cam_model.nlayers):
@@ -115,13 +117,14 @@ def add_delta_model(model_config, cam_model, wandb_config):
         print("LEN MODIFIED MODULES:", len(modified_modules))
         delta_model = LoraModel(backbone_model=cam_model, lora_r=model_config["lora_r"], modified_modules=modified_modules)
         cam_model.to("cuda")
-        #delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
         wandb_config["lora_r"] = model_config["lora_r"]
-    delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
+        delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
 
 
     trainable_params = sum(p.numel() for p in cam_model.parameters() if p.requires_grad) / sum(p.numel() for p in cam_model.parameters())
     print(f"Trainable parameters: {trainable_params}")
+    for name, module in cam_model.named_modules():
+        print(name, sum(p.numel() for p in module.parameters()))
     #delta_config = AutoDeltaConfig.from_dict(model_config)
     #delta_model = AutoDeltaModel.from_config(delta_config, backbone_model=cam_model)
     #cam_model.to("cuda")
