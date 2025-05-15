@@ -122,8 +122,8 @@ def add_delta_model(model_config, cam_model, wandb_config):
 
 
     cam_model.print_trainable_parameters()
-    for name, module in cam_model.named_modules():
-        print(name, sum(p.numel() for p in module.parameters()))
+    for name, param in cam_model.named_parameters():
+        print(name, param.numel())
     #delta_config = AutoDeltaConfig.from_dict(model_config)
     #delta_model = AutoDeltaModel.from_config(delta_config, backbone_model=cam_model)
     #cam_model.to("cuda")
