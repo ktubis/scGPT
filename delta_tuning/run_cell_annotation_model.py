@@ -19,6 +19,7 @@ from datetime import datetime
 import optuna
 import wandb
 from OpenDelta.opendelta import AdapterModel, SoftPromptModel, LoraModel
+from transformers import get_linear_schedule_with_warmup
 
 sys.path.insert(0, "../")
 from scgpt.model import TransformerModel
@@ -155,15 +156,20 @@ def add_tokens_to_vocab(pad_token, vocab):
             vocab.append_token(s)
 
 
-def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial):
+def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, warm_up_epochs=0, batch_size=32):
     split_data, gene_ids = cam._get_split_data(adata_train)
     optimizer = torch.optim.Adam(
         cam.model.parameters(), lr=cam.lr, eps=cam.eps
     )
     move_optimizer_params_to_cuda(optimizer)
-    scheduler = torch.optim.lr_scheduler.StepLR(
-            optimizer, cam.schedule_interval, gamma=cam.schedule_ratio
-        )
+    #scheduler = torch.optim.lr_scheduler.StepLR(
+    #        optimizer, cam.schedule_interval, gamma=cam.schedule_ratio
+    #    )
+    scheduler = get_linear_schedule_with_warmup(
+                optimizer,
+                num_warmup_steps=warm_up_epochs * np.ceil(len(split_data.train_data) / batch_size),
+                num_training_steps=num_epochs * np.ceil(len(split_data.train_data) / batch_size),
+            )
     scaler = torch.cuda.amp.GradScaler(enabled=True)
     prev_epoch_loss = np.inf
     bad_epochs_counter = 0
@@ -184,7 +190,7 @@ def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial):
             bad_epochs_counter = 0
         if bad_epochs_counter >= OPTUNA_PRUNING_EPOCHS or trial.should_prune():
             raise optuna.exceptions.TrialPruned()
-        scheduler.step()
+        #scheduler.step()
     # return the loss of the last epoch
     return f1_score
         
@@ -195,7 +201,7 @@ def update_model_config(model_config, hyperparams):
     model_config["schedule_ratio"] = hyperparams["schedule_ratio"]
     return model_config
 
-def find_hyperparams(model_init_params, grid_search_config, num_epochs, adata_train, adata_test, delta_method, wandb_config):
+def find_hyperparams(model_init_params, grid_search_config, num_epochs, adata_train, adata_test, delta_method, wandb_config, warm_up_epochs=0):
     def optuna_objective(trial):
         print("trial number:", trial.number)
         with open(grid_search_config, "r") as f:
@@ -242,11 +248,11 @@ def find_hyperparams(model_init_params, grid_search_config, num_epochs, adata_tr
             add_delta_model(delta_config, cam.model, wandb_config)
 
         wandb.watch(cam.model, log="all", log_graph=True)
-        return hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial)
+        return hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, warm_up_epochs=warm_up_epochs, batch_size=model_init_params["batch_size"])
     return optuna_objective
 
 
-def train_model(args, adata_train, adata_test, cam, wandb_config, adata_test2=None):
+def train_model(args, adata_train, adata_test, cam, wandb_config, adata_test2=None, warm_up_epochs=0):
     if args.delta_configs_file:
         with open(args.delta_configs_file, 'r') as f:
             delta_config = json.load(f)
@@ -268,7 +274,7 @@ def train_model(args, adata_train, adata_test, cam, wandb_config, adata_test2=No
     if args.wandb:
         init_wandb(wandb_config)
         wandb.watch(cam.model, log="all", log_graph=True)
-    cam.train(args.epochs, adata_train, args.seed, adata_test1=adata_test, adata_test2=adata_test2, find_lr=args.find_lr)
+    cam.train(args.epochs, adata_train, args.seed, adata_test1=adata_test, adata_test2=adata_test2, find_lr=args.find_lr, warm_up_epochs=warm_up_epochs, early_stop=args.early_stop)
 
 
 def main():
@@ -292,6 +298,8 @@ def main():
     parser.add_argument("--hyperparam_search_config", default=None, help="The configuration from which to do hyperparameter search.")
     parser.add_argument("--freeze_modules", type=str, nargs="+", default=[], help="The modules to freeze. Must be a list of strings.")
     parser.add_argument("--batch_size", type=int, default=32, help="The batch size to use for training.")
+    parser.add_argument("--warm_up_epochs", type=int, default=0, help="The number of warm up epochs to use for training.")
+    parser.add_argument("--early_stop", action='store_true', help="Whether to use early stopping.")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -359,7 +367,7 @@ def main():
         print("Running hyperparameter search...")
         study = optuna.create_study(direction="maximize")
         objective = find_hyperparams(model_init_params, args.hyperparam_search_config, args.epochs, adata_train, adata_test,
-                                        delta_method, wandb_config)
+                                        delta_method, wandb_config, warm_up_epochs=args.warm_up_epochs)
         study.optimize(objective, n_trials=50)
         best_trial = study.best_trial
         print("Best trial:")
@@ -371,7 +379,7 @@ def main():
     else:
         cam = CellAnnotationModelWrapper(**model_init_params)
         if not args.inference:
-            train_model(args, adata_train, adata_test, cam, wandb_config, adata_test2)
+            train_model(args, adata_train, adata_test, cam, wandb_config, adata_test2, warm_up_epochs=args.warm_up_epochs)
 
         _, _, results = cam.test(adata_test)
         
