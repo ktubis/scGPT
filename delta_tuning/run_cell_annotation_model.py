@@ -412,7 +412,7 @@ def main():
         study = optuna.create_study(direction="maximize")
         objective = find_hyperparams(model_init_params, args.hyperparam_search_config, adata_train, adata_test,
                                      delta_method, wandb_config, logger)
-        study.optimize(objective, n_trials=50)
+        study.optimize(objective, n_trials=30)
         best_trial = study.best_trial
         print("Best trial:")
         print("  Value: {}".format(best_trial.value))
