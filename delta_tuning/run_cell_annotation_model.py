@@ -200,6 +200,18 @@ def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, warm_
             f"f1: {f1_score:.4f} | "
             f"lr: {scheduler.get_last_lr()[0]:.4e}"
         )
+
+        if cam.log_wandb:
+            wandb.log(
+                {
+                    "epoch": epoch,
+                    "train_loss": epoch_loss,
+                    "eval_loss": eval_loss,
+                    "best_eval_loss": best_eval_loss,
+                    "f1_score": f1_score,
+                    "lr": scheduler.get_last_lr()[0],
+                }
+            )
                 
         # Return if the model doesn't improve for a certain number of epochs
         if bad_epochs_counter >= OPTUNA_PRUNING_EPOCHS:
