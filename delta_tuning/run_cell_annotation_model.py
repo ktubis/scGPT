@@ -20,6 +20,7 @@ import optuna
 import wandb
 from OpenDelta.opendelta import AdapterModel, SoftPromptModel, LoraModel
 from transformers import get_linear_schedule_with_warmup
+import logging
 
 sys.path.insert(0, "../")
 from scgpt.model import TransformerModel
@@ -34,6 +35,8 @@ SEED = 42
 FINETUNED_MOODELS_PATH = "retrained_models/"
 OPTUNA_PRUNING_EPOCHS = 5
 OPTUNA_PRUNING_PERCENTAGE = 0.05
+HYPERPARAMS_SEARCH_DIR = "hyperparam_search_results/"
+OPTUNA_LOGS_DIR = HYPERPARAMS_SEARCH_DIR + "optuna_logs/"
 
 
 def set_seed(seed):
@@ -156,7 +159,7 @@ def add_tokens_to_vocab(pad_token, vocab):
             vocab.append_token(s)
 
 
-def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, warm_up_epochs=0, batch_size=32):
+def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, warm_up_percentage, batch_size, logger):
     split_data, gene_ids = cam._get_split_data(adata_train)
     optimizer = torch.optim.Adam(
         cam.model.parameters(), lr=cam.lr, eps=cam.eps
@@ -165,34 +168,51 @@ def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, warm_
     #scheduler = torch.optim.lr_scheduler.StepLR(
     #        optimizer, cam.schedule_interval, gamma=cam.schedule_ratio
     #    )
+    num_training_steps = num_epochs * np.ceil(len(split_data.train_data) / batch_size)
+    warm_up_steps = (warm_up_percentage / 100.) * num_training_steps
     scheduler = get_linear_schedule_with_warmup(
                 optimizer,
-                num_warmup_steps=warm_up_epochs * np.ceil(len(split_data.train_data) / batch_size),
-                num_training_steps=num_epochs * np.ceil(len(split_data.train_data) / batch_size),
+                num_warmup_steps=warm_up_steps,
+                num_training_steps=num_training_steps,
             )
     scaler = torch.cuda.amp.GradScaler(enabled=True)
-    prev_epoch_loss = np.inf
     bad_epochs_counter = 0
     assert num_epochs > 0, "num_epochs must be greater than 0"
+    best_eval_loss = np.inf
+
     for epoch in range(1, num_epochs + 1):
         train_loader, valid_loader = cam._get_train_valid_data_per_epoch(split_data, gene_ids)
         epoch_loss = cam._train_step(train_loader, optimizer, scheduler, scaler, epoch)
         print("epoch loss:", epoch_loss)
+        eval_loss, _ = cam._evaluate(valid_loader, epoch)
+        if eval_loss < best_eval_loss:
+            best_eval_loss = eval_loss
+            print("best eval loss:", best_eval_loss)
         _, _, test_results = cam.test(adata_test)
         f1_score = test_results["test/macro_f1"]
         print("f1 score:", f1_score)
-        trial.report(f1_score, step=epoch)
+        trial.report(eval_loss, step=epoch)
+        logger.info(
+            f"Epoch {epoch:03d} | "
+            f"train_loss: {epoch_loss:.4f} | "
+            f"eval_loss: {eval_loss:.4f} | "
+            f"best_eval: {best_eval_loss:.4f} | "
+            f"f1: {f1_score:.4f} | "
+            f"lr: {scheduler.get_last_lr()[0]:.4e}"
+        )
+                
+        # Return if the model doesn't improve for a certain number of epochs
+        if bad_epochs_counter >= OPTUNA_PRUNING_EPOCHS:
+            logger.info(f"Early stopping at epoch {epoch} due to no improvement in eval loss, with best eval loss: {best_eval_loss}")
+            return best_eval_loss
 
-        # prune if doesn't improve on train in the last past epochs
-        if epoch_loss >= prev_epoch_loss - (OPTUNA_PRUNING_PERCENTAGE * prev_epoch_loss) / 100:
-            bad_epochs_counter += 1
-        else:
-            bad_epochs_counter = 0
-        if bad_epochs_counter >= OPTUNA_PRUNING_EPOCHS or trial.should_prune():
+        if trial.should_prune():
+            logger.info(f"Trial {trial.number} pruned at epoch {epoch} with eval loss: {eval_loss:.4f}")
             raise optuna.exceptions.TrialPruned()
+
         #scheduler.step()
-    # return the loss of the last epoch
-    return f1_score
+    # return the eval loss of the best epoch
+    return best_eval_loss
         
 
 def update_model_config(model_config, hyperparams):
@@ -201,42 +221,38 @@ def update_model_config(model_config, hyperparams):
     model_config["schedule_ratio"] = hyperparams["schedule_ratio"]
     return model_config
 
-def find_hyperparams(model_init_params, grid_search_config, num_epochs, adata_train, adata_test, delta_method, wandb_config, warm_up_epochs=0):
+def find_hyperparams(model_init_params, grid_search_config, adata_train, adata_test, delta_method, wandb_config, logger):
     def optuna_objective(trial):
         print("trial number:", trial.number)
         with open(grid_search_config, "r") as f:
             grid_search_dict = json.load(f)
         min_lr = grid_search_dict["min_lr"]
         max_lr = grid_search_dict["max_lr"]
-        min_delta_param = grid_search_dict["min_delta_param"]
-        max_delta_param = grid_search_dict["max_delta_param"]
-        min_schaduler_interval = grid_search_dict["min_scheduler_interval"]
-        max_scheduler_interval = grid_search_dict["max_scheduler_interval"]
-        min_scheduler_ratio = grid_search_dict["min_scheduler_ratio"]
-        max_scheduler_ratio = grid_search_dict["max_scheduler_ratio"]
 
         lr = trial.suggest_loguniform("lr", min_lr, max_lr)
-        schedule_interval = trial.suggest_int("schedule_interval", min_schaduler_interval, max_scheduler_interval)
-        schedule_ratio = trial.suggest_float("schedule_ratio", min_scheduler_ratio, max_scheduler_ratio)
-        delta_param = trial.suggest_int("delta_param", min_delta_param, max_delta_param)
+        delta_param = trial.suggest_categorical("delta_param", grid_search_dict["dela_params"])
+        num_epochs = trial.suggest_categorical("epochs", grid_search_dict["epochs"])
+        warm_up_percentage = trial.suggest_categorical("warm_up_percentage", grid_search_dict["warm_up_percentages"])
+
         hyperparams = {
             "lr": lr,
-            "schedule_interval": schedule_interval,
-            "schedule_ratio": schedule_ratio,
+            "delta_param": delta_param,
+            "num_epochs": num_epochs,
+            "warm_up_percentage": warm_up_percentage
         }
 
-        print(hyperparams)
-        print("delta_param:", delta_param)
+        logger.info(f"Trial {trial.number}: lr: {lr}, delta_param: {delta_param}, num_epochs: {num_epochs}, warm_up_percentage: {warm_up_percentage}, delta_method: {delta_method}")
 
         wandb_config["lr"] = lr
-        wandb_config["schedule_interval"] = schedule_interval
-        wandb_config["schedule_ratio"] = schedule_ratio
         wandb_config["delta_param"] = delta_param
+        wandb_config["num_epochs"] = num_epochs
+        wandb_config["warm_up_percentage"] = warm_up_percentage
+        wandb_config["delta_method"] = delta_method
         wandb_config["model_name"] = f"{wandb_config['model_name']}_{trial.number}"
         init_wandb(wandb_config)
 
         # Update the model config with the hyperparameters and create model
-        update_model_config(model_init_params, hyperparams)
+        model_init_params["lr"] = lr
         cam = CellAnnotationModelWrapper(**model_init_params)
 
         if delta_method == "all_weights":
@@ -248,7 +264,10 @@ def find_hyperparams(model_init_params, grid_search_config, num_epochs, adata_tr
             add_delta_model(delta_config, cam.model, wandb_config)
 
         wandb.watch(cam.model, log="all", log_graph=True)
-        return hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, warm_up_epochs=warm_up_epochs, batch_size=model_init_params["batch_size"])
+        return hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial,
+                                     warm_up_percentage=warm_up_percentage,
+                                     batch_size=model_init_params["batch_size"],
+                                     logger=logger)
     return optuna_objective
 
 
@@ -346,8 +365,6 @@ def main():
         "learning_rate": args.lr,
         "model_name": model_name,
         "epochs": args.epochs,
-        "schedule_ratio": args.schedule_ratio,
-        "schedule_interval": args.schedule_interval,
         "seed": args.seed,
         "log_wandb": args.wandb,
     }
@@ -364,10 +381,25 @@ def main():
         else:
             raise ValueError("Please provide a delta method for hyperparameter search.")
         
+        os.makedirs(OPTUNA_LOGS_DIR, exist_ok=True)
+        name_log_file = f"optuna_trials_{wandb_config['model_name']}_delta_method_{delta_method}.log"
+        log_path = os.path.join(OPTUNA_LOGS_DIR, name_log_file)
+        # Set the Optuna logging level to INFO
+        optuna.logging.set_verbosity(optuna.logging.INFO)
+        logger = optuna.logging.get_logger("optuna")
+        optuna.logging.disable_default_handler()
+
+        # Prevent double logging
+        if not logger.hasHandlers():
+            file_handler = logging.FileHandler(log_path)
+            formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+        
         print("Running hyperparameter search...")
         study = optuna.create_study(direction="maximize")
-        objective = find_hyperparams(model_init_params, args.hyperparam_search_config, args.epochs, adata_train, adata_test,
-                                        delta_method, wandb_config, warm_up_epochs=args.warm_up_epochs)
+        objective = find_hyperparams(model_init_params, args.hyperparam_search_config, adata_train, adata_test,
+                                     delta_method, wandb_config, logger)
         study.optimize(objective, n_trials=50)
         best_trial = study.best_trial
         print("Best trial:")
@@ -375,6 +407,10 @@ def main():
         print("  Params: ")
         for key, value in best_trial.params.items():
             print("    {}: {}".format(key, value))
+        df = study.trials_dataframe()
+
+        os.makedirs(HYPERPARAMS_SEARCH_DIR, exist_ok=True)
+        df.to_csv(f"{HYPERPARAMS_SEARCH_DIR}/{model_name}.csv", index=False)
 
     else:
         cam = CellAnnotationModelWrapper(**model_init_params)
