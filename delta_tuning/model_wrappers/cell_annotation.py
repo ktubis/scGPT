@@ -12,6 +12,7 @@ import warnings
 from sklearn.model_selection import train_test_split
 import wandb
 from collections import namedtuple
+from transformers import get_linear_schedule_with_warmup
 
 sys.path.insert(0, "../")
 from scgpt.tokenizer import tokenize_and_pad_batch, random_mask_value
@@ -103,7 +104,9 @@ class CellAnnotationModelWrapper():
         self.model = TransformerModel(ntoken=len(vocab), 
                             num_batch_labels=num_batches,
                             n_cls=num_celltypes, 
-                            vocab=vocab, 
+                            vocab=vocab,
+                            seq_len=max_seq_len,
+                            train_batch_size=batch_size,
                             **config_dict)
                 
         if model_path is not None:
@@ -446,6 +449,7 @@ class CellAnnotationModelWrapper():
                 total_cls = 0
                 total_error = 0
                 start_time = time.time()
+            scheduler.step()
         return total_loss_in_epoch / num_batches
 
 
@@ -472,7 +476,8 @@ class CellAnnotationModelWrapper():
         return split_data, gene_ids
 
 
-    def train(self, num_epochs, adata, seed, adata_test1, adata_test2, find_lr=False):
+    def train(self, num_epochs, adata, seed, adata_test1, adata_test2, find_lr=False, warm_up_epochs=0, early_stop=False):
+
         split_data, gene_ids = self._get_split_data(adata)
         best_val_loss = float("inf")
 
@@ -480,14 +485,20 @@ class CellAnnotationModelWrapper():
             self.model.parameters(), lr=self.lr, eps=self.eps
         )
         if find_lr:
+            assert warm_up_epochs == 0, "Warm up epochs are not supported in lr finding mode."
             # If in the lr finding mode.
             scheduler = torch.optim.lr_scheduler.StepLR(
                 optimizer, FIND_LR_PERIOD, gamma=FIND_LR_GAMMA
             )
         else:
-            scheduler = torch.optim.lr_scheduler.StepLR(
-                optimizer, self.schedule_interval, gamma=self.schedule_ratio
+            scheduler = get_linear_schedule_with_warmup(
+                optimizer,
+                num_warmup_steps=warm_up_epochs * np.ceil(len(split_data.train_data) / self.batch_size),
+                num_training_steps=num_epochs * np.ceil(len(split_data.train_data) / self.batch_size),
             )
+            #scheduler = torch.optim.lr_scheduler.StepLR(
+            #    optimizer, self.schedule_interval, gamma=self.schedule_ratio
+            #)
         move_optimizer_params_to_cuda(optimizer)
         scaler = torch.cuda.amp.GradScaler(enabled=True)
 
@@ -531,7 +542,7 @@ class CellAnnotationModelWrapper():
                 early_stopping_counter += 1
             else:
                 early_stopping_counter = 0
-            if early_stopping_counter >= EARLY_STOPPING_PATIENCE:
+            if early_stop and early_stopping_counter >= EARLY_STOPPING_PATIENCE:
                 # return the value for optuna hyperparameter search
                 self.logger.info(
                     f"Early stopping at epoch {epoch} with score {curr_test_loss_avg:5.4f}"
@@ -568,7 +579,7 @@ class CellAnnotationModelWrapper():
                     }
                 )
 
-            scheduler.step()
+            #scheduler.step()
 
 
     def finetune_cls_decoder(self):
