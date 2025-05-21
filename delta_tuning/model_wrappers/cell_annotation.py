@@ -14,6 +14,8 @@ import wandb
 from collections import namedtuple
 from transformers import get_linear_schedule_with_warmup
 
+from arcitecture.transformer_wrapper import copy_original_model
+
 sys.path.insert(0, "../")
 from scgpt.tokenizer import tokenize_and_pad_batch, random_mask_value
 from scgpt.model import TransformerModel
@@ -138,9 +140,8 @@ class CellAnnotationModelWrapper():
             self.mask_value = mask_value
             self.pad_value = pad_value
 
-
         print("lr:", self.lr, "schedule_interval:", self.schedule_interval, "schedule_ratio:", self.schedule_ratio)
-
+            
 
     def load_model(self, model_path):
         try:
@@ -158,6 +159,7 @@ class CellAnnotationModelWrapper():
                 for k, v in pretrained_dict.items()
                 if k in model_dict and v.shape == model_dict[k].shape
             }
+            copy_original_model(pretrained_dict, model_dict)
             model_dict.update(pretrained_dict)
             self.model.load_state_dict(model_dict)
 
