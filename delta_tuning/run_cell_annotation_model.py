@@ -110,11 +110,12 @@ def add_delta_model(model_config, cam_model, wandb_config):
     if model_config["delta_type"] == "soft_prompt":
         delta_model = SoftPromptModel(backbone_model=cam_model, soft_token_num=model_config["soft_token_num"])
         wandb_config["soft_token_num"] = model_config["soft_token_num"]
-        delta_model.freeze_module(exclude=['deltas'])
+        #delta_model.freeze_module(exclude=['deltas'])
     if model_config["delta_type"] == "lora":
         modified_modules = []
         for i in range(cam_model.nlayers):
-            modified_modules.append(f"transformer_encoder.layers.{i}.self_attn")
+            modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.Q")
+            modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.V")
             #modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.v_proj_weight")
             #modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.k_proj_weight")
             #modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.out_proj")
@@ -122,7 +123,7 @@ def add_delta_model(model_config, cam_model, wandb_config):
         delta_model = LoraModel(backbone_model=cam_model, lora_r=model_config["lora_r"], modified_modules=modified_modules)
         cam_model.to("cuda")
         wandb_config["lora_r"] = model_config["lora_r"]
-        delta_model.freeze_module(exclude=['deltas'])#, 'cls_decoder'])
+    delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
 
 
     cam_model.print_trainable_parameters()
