@@ -114,7 +114,8 @@ def add_delta_model(model_config, cam_model, wandb_config):
     if model_config["delta_type"] == "lora":
         modified_modules = []
         for i in range(cam_model.nlayers):
-            modified_modules.append(f"transformer_encoder.layers.{i}.self_attn")
+            modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.Q")
+            modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.V")
             #modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.v_proj_weight")
             #modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.k_proj_weight")
             #modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.out_proj")

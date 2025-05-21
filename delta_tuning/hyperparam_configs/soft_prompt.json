@@ -1,0 +1,7 @@
+{
+    "min_lr": 5e-5,
+    "max_lr": 5e-3,
+    "dela_params": [20, 50, 100, 300, 500],
+    "epochs": [5, 10, 20, 30, 50, 100],
+    "warm_up_percentages": [5, 10, 20, 30]
+}
