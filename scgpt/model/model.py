@@ -107,9 +107,9 @@ class TransformerModel(nn.Module):
             print("Using simple batchnorm instead of domain specific batchnorm")
             self.bn = nn.BatchNorm1d(d_model, eps=6.1e-5)
 
-        #encoder_layers = CustomTransformerEncoderLayer(
-        #    d_model, nhead, d_hid, dropout, batch_first=True, attention_cls=MultiheadAttentionDeconstructed,
-        #)
+        encoder_layers = CustomTransformerEncoderLayer(
+            d_model, nhead, d_hid, dropout, batch_first=True, attention_cls=MultiheadAttentionDeconstructed,
+        )
         encoder_layers = TransformerEncoderLayer(
             d_model, nhead, d_hid, dropout, batch_first=True
     )
