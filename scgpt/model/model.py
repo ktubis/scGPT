@@ -12,15 +12,8 @@ from torch.distributions import Bernoulli
 from tqdm import trange
 import json
 
-try:
-    from flash_attn.flash_attention import FlashMHA
+from delta_tuning.arcitecture.transformer_wrapper import CustomTransformerEncoderLayer, MultiheadAttentionDeconstructed
 
-    flash_attn_available = True
-except ImportError:
-    import warnings
-
-    warnings.warn("flash_attn is not installed")
-    flash_attn_available = False
 
 from .dsbn import DomainSpecificBatchNorm1d
 from .grad_reverse import grad_reverse
@@ -81,15 +74,7 @@ class TransformerModel(nn.Module):
             )
         if cell_emb_style not in ["cls", "avg-pool", "w-pool"]:
             raise ValueError(f"Unknown cell_emb_style: {cell_emb_style}")
-        if use_fast_transformer:
-            if not flash_attn_available:
-                warnings.warn(
-                    "flash-attn is not installed, using pytorch transformer instead. "
-                    "Set use_fast_transformer=False to avoid this warning. "
-                    "Installing flash-attn is highly recommended."
-                )
-                use_fast_transformer = False
-        self.use_fast_transformer = use_fast_transformer
+        self.use_fast_transformer = False
         self.config = FakeConfig()
 
         # TODO: add dropout in the GeneEncoder
@@ -122,26 +107,13 @@ class TransformerModel(nn.Module):
             print("Using simple batchnorm instead of domain specific batchnorm")
             self.bn = nn.BatchNorm1d(d_model, eps=6.1e-5)
 
-        if use_fast_transformer:
-            if fast_transformer_backend == "linear":
-                self.transformer_encoder = FastTransformerEncoderWrapper(
-                    d_model, nhead, d_hid, nlayers, dropout
-                )
-            elif fast_transformer_backend == "flash":
-                encoder_layers = FlashTransformerEncoderLayer(
-                    d_model,
-                    nhead,
-                    d_hid,
-                    dropout,
-                    batch_first=True,
-                    norm_scheme=self.norm_scheme,
-                )
-                self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
-        else:
-            encoder_layers = TransformerEncoderLayer(
-                d_model, nhead, d_hid, dropout, batch_first=True
-            )
-            self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
+        #encoder_layers = CustomTransformerEncoderLayer(
+        #    d_model, nhead, d_hid, dropout, batch_first=True, attention_cls=MultiheadAttentionDeconstructed,
+        #)
+        encoder_layers = TransformerEncoderLayer(
+            d_model, nhead, d_hid, dropout, batch_first=True
+    )
+        self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
 
         self.decoder = ExprDecoder(
             d_model,
