@@ -110,9 +110,6 @@ class TransformerModel(nn.Module):
         encoder_layers = CustomTransformerEncoderLayer(
             d_model, nhead, d_hid, dropout, batch_first=True, attention_cls=MultiheadAttentionDeconstructed,
         )
-        encoder_layers = TransformerEncoderLayer(
-            d_model, nhead, d_hid, dropout, batch_first=True
-    )
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
 
         self.decoder = ExprDecoder(
