@@ -153,12 +153,12 @@ class CellAnnotationModelWrapper():
             # only load params that are in the model and match the size
             model_dict = self.model.state_dict()
             pretrained_dict = torch.load(model_path)
+            copy_original_model(pretrained_dict, model_dict)
             pretrained_dict = {
                 k: v
                 for k, v in pretrained_dict.items()
                 if k in model_dict and v.shape == model_dict[k].shape
             }
-            copy_original_model(pretrained_dict, model_dict)
             model_dict.update(pretrained_dict)
             self.model.load_state_dict(model_dict)
 
