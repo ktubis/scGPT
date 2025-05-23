@@ -22,12 +22,12 @@ def copy_original_model(pretrained_model_dict, model_dict):
             b_q, b_k, b_v = pretrained_model_dict[f"transformer_encoder.layers.{i}.self_attn.{attention_bias_str}"].chunk(3, dim=0)
             pretrained_model_dict.pop(f"transformer_encoder.layers.{i}.self_attn.{attention_weight_str}")
             pretrained_model_dict.pop(f"transformer_encoder.layers.{i}.self_attn.{attention_bias_str}")
-            model_dict[f"transformer_encoder.layers.{i}.self_attn.Q.weight"] = w_q
-            model_dict[f"transformer_encoder.layers.{i}.self_attn.K.weight"] = w_k
-            model_dict[f"transformer_encoder.layers.{i}.self_attn.V.weight"] = w_v
-            model_dict[f"transformer_encoder.layers.{i}.self_attn.Q.bias"] = b_q
-            model_dict[f"transformer_encoder.layers.{i}.self_attn.K.bias"] = b_k
-            model_dict[f"transformer_encoder.layers.{i}.self_attn.V.bias"] = b_v
+            pretrained_model_dict[f"transformer_encoder.layers.{i}.self_attn.Q.weight"] = w_q
+            pretrained_model_dict[f"transformer_encoder.layers.{i}.self_attn.K.weight"] = w_k
+            pretrained_model_dict[f"transformer_encoder.layers.{i}.self_attn.V.weight"] = w_v
+            pretrained_model_dict[f"transformer_encoder.layers.{i}.self_attn.Q.bias"] = b_q
+            pretrained_model_dict[f"transformer_encoder.layers.{i}.self_attn.K.bias"] = b_k
+            pretrained_model_dict[f"transformer_encoder.layers.{i}.self_attn.V.bias"] = b_v
             i += 1
 
 class MultiheadAttentionDeconstructed(nn.MultiheadAttention):
