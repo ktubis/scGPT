@@ -134,7 +134,7 @@ def add_delta_model(model_config, cam_model, wandb_config):
 
 def get_data_loaders(ds_loader, vocab, config_dict, test_data):
     adata_train, adata_test = ds_loader.get_train_test(test_data)
-    adata_test2 = ds_loader.adata[ds_loader.adata.obs["batch_id"] == ds_loader.dataset_batch_dict["Xin"]].copy()
+    #adata_test2 = ds_loader.adata[ds_loader.adata.obs["batch_id"] == ds_loader.dataset_batch_dict["Xin"]].copy()
 
     # set up the preprocessor, use the args to config the workflow
     preprocessor = Preprocessor(
@@ -146,9 +146,9 @@ def get_data_loaders(ds_loader, vocab, config_dict, test_data):
 
     adata_train = preprocess_data(adata_train, preprocessor, vocab)
     adata_test = preprocess_data(adata_test, preprocessor, vocab)
-    adata_test2 = preprocess_data(adata_test2, preprocessor, vocab)
+    #adata_test2 = preprocess_data(adata_test2, preprocessor, vocab)
 
-    return adata_train, adata_test, adata_test2
+    return adata_train, adata_test
 
 def add_tokens_to_vocab(pad_token, vocab):
     special_tokens = [pad_token, "<cls>", "<eoc>"]
@@ -303,7 +303,7 @@ def train_model(args, adata_train, adata_test, cam, wandb_config, adata_test2=No
     if args.wandb:
         init_wandb(wandb_config)
         wandb.watch(cam.model, log="all", log_graph=True)
-    cam.train(args.epochs, adata_train, args.seed, adata_test1=adata_test, adata_test2=adata_test2, find_lr=args.find_lr, warm_up_epochs=warm_up_epochs, early_stop=args.early_stop)
+    cam.train(args.epochs, adata_train, args.seed, adata_test=adata_test, find_lr=args.find_lr, warm_up_epochs=warm_up_epochs, early_stop=args.early_stop)
 
 
 def main():
@@ -311,7 +311,8 @@ def main():
     parser.add_argument("--model_config_path", type=str, default="model_configs/scgpt_pretrained_model.json", help="Path to the model config file")
     parser.add_argument("--model", type=str, default=None, help="Path to the pretrained model to load. Must match the model config file. If None, will initialize a new model.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
-    parser.add_argument("--test_data", type=str, default="Muraro", help="Which dataset to use as the test data")
+    parser.add_argument("--test_data", type=str, default="Muraro", help="Which dataset to use as the test data, only for the Pancreatic dataset. Must be one of: Baron_Human, Muraro, Segerstolpe, Xin")
+    parser.add_argument("--train_data", type=str, default="filtered_pancreas", help="Which dataset to use for the train data.")
     parser.add_argument("--max_seq_len", type=int, default=3001, help="Maximum sequence length")
     parser.add_argument("--epochs", type=int, default=1000, help="Number of epochs to train the model")
     parser.add_argument("--model_name", type=str, default="awesome_model", help="The name of the model to be saved")
@@ -331,6 +332,11 @@ def main():
     parser.add_argument("--early_stop", action='store_true', help="Whether to use early stopping.")
     args = parser.parse_args()
 
+    supported_datasets = [ds.value for ds in load_ds.SupportedDatasets]
+    if args.train_data not in supported_datasets:
+        raise ValueError("Name of the train dataset is not supported. Should be one of: ",
+                         supported_datasets)
+
     set_seed(args.seed)
     with open(args.model_config_path, "r") as f:
         config_dict = json.load(f)
@@ -338,12 +344,10 @@ def main():
     vocab = GeneVocab.from_file(VOCAB_PATH)
     vocab = GeneVocab.from_file(VOCAB_PATH)
     add_tokens_to_vocab(config_dict["pad_token"], vocab)
-
-    ds_loader = load_ds.PancreaticDataset()
-    adata_train, adata_test, adata_test2 = get_data_loaders(ds_loader, vocab, config_dict, args.test_data)
-
+    print("train data:", args.train_data in supported_datasets)
+    ds_loader = load_ds.get_data_loader(args.train_data)
+    adata_train, adata_test = get_data_loaders(ds_loader, vocab, config_dict, args.test_data)
     num_celltypes = ds_loader.get_num_celltypes()
-    num_batches = ds_loader.get_num_batches()
 
     # Get the current date and time, format as 'yymmddhhmm'
     formatted_time = datetime.now().strftime('%y%m%d%H%M')
@@ -360,7 +364,6 @@ def main():
         "pad_value": config_dict["pad_value"],
         "vocab": vocab,
         "config_dict": config_dict,
-        "num_batches": num_batches,
         "num_celltypes": num_celltypes,
         "model_name": model_name,
         "lr": args.lr,
@@ -425,7 +428,7 @@ def main():
     else:
         cam = CellAnnotationModelWrapper(**model_init_params)
         if not args.inference:
-            train_model(args, adata_train, adata_test, cam, wandb_config, adata_test2, warm_up_epochs=args.warm_up_epochs)
+            train_model(args, adata_train, adata_test, cam, wandb_config, warm_up_epochs=args.warm_up_epochs)
 
         _, _, results = cam.test(adata_test)
         
