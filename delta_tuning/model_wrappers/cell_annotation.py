@@ -138,8 +138,6 @@ class CellAnnotationModelWrapper():
         else:
             self.mask_value = mask_value
             self.pad_value = pad_value
-
-        print("lr:", self.lr, "schedule_interval:", self.schedule_interval, "schedule_ratio:", self.schedule_ratio)
             
 
     def load_model(self, model_path):
