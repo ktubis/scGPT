@@ -10,10 +10,16 @@ from torch.nn.init import constant_, xavier_uniform_
 # MultiheadAttention module.
 def copy_original_model(pretrained_model_dict, model_dict):
     if "transformer_encoder.layers.0.self_attn.Q.weight" in model_dict and "transformer_encoder.layers.0.self_attn.Q.weight" not in pretrained_model_dict:
+        if "transformer_encoder.layers.0.self_attn.in_proj_weight" in pretrained_model_dict:
+            attention_weight_str = "in_proj_weight"
+            attention_bias_str = "in_proj_bias"
+        elif "transformer_encoder.layers.0.self_attn.Wqkv.weight" in pretrained_model_dict:
+            attention_weight_str = "Wqkv.weight"
+            attention_bias_str = "Wqkv.bias"
         i = 0
         while f"transformer_encoder.layers.{i}.self_attn.Q.weight" in model_dict:
-            w_q, w_k, w_v = pretrained_model_dict[f"transformer_encoder.layers.{i}.self_attn.in_proj_weight"].chunk(3, dim=0)
-            b_q, b_k, b_v = pretrained_model_dict[f"transformer_encoder.layers.{i}.self_attn.in_proj_bias"].chunk(3, dim=0)
+            w_q, w_k, w_v = pretrained_model_dict[f"transformer_encoder.layers.{i}.self_attn.{attention_weight_str}"].chunk(3, dim=0)
+            b_q, b_k, b_v = pretrained_model_dict[f"transformer_encoder.layers.{i}.self_attn.{attention_bias_str}"].chunk(3, dim=0)
             model_dict[f"transformer_encoder.layers.{i}.self_attn.Q.weight"] = w_q
             model_dict[f"transformer_encoder.layers.{i}.self_attn.K.weight"] = w_k
             model_dict[f"transformer_encoder.layers.{i}.self_attn.V.weight"] = w_v
