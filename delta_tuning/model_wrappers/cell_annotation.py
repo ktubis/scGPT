@@ -298,7 +298,7 @@ class CellAnnotationModelWrapper():
             else adata.layers[INPUT_LAYER]
         )
 
-        celltypes_labels = adata.obs["celltype"].astype('category').cat.codes  # make sure count from 0
+        celltypes_labels = adata.obs["celltype_id"].tolist()  # make sure count from 0
         celltypes_labels = np.array(celltypes_labels)
 
         batch_ids = adata.obs["batch_id"].tolist()
