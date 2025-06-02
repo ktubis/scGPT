@@ -134,7 +134,6 @@ def add_delta_model(model_config, cam_model, wandb_config):
 
 def get_data_loaders(ds_loader, vocab, config_dict, test_data):
     adata_train, adata_test = ds_loader.get_train_test(test_data)
-    #adata_test2 = ds_loader.adata[ds_loader.adata.obs["batch_id"] == ds_loader.dataset_batch_dict["Xin"]].copy()
 
     # set up the preprocessor, use the args to config the workflow
     preprocessor = Preprocessor(
@@ -146,7 +145,6 @@ def get_data_loaders(ds_loader, vocab, config_dict, test_data):
 
     adata_train = preprocess_data(adata_train, preprocessor, vocab)
     adata_test = preprocess_data(adata_test, preprocessor, vocab)
-    #adata_test2 = preprocess_data(adata_test2, preprocessor, vocab)
 
     return adata_train, adata_test
 
