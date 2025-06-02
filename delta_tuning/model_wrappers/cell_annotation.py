@@ -460,7 +460,7 @@ class CellAnnotationModelWrapper():
             else adata.layers[INPUT_LAYER]
         )
 
-        celltypes_labels = adata.obs["celltype"].astype('category').cat.codes  # make sure count from 0
+        celltypes_labels = adata.obs["celltype_id"].tolist()  # make sure count from 0
         celltypes_labels = np.array(celltypes_labels)
 
         batch_ids = adata.obs["batch_id"].tolist()
@@ -475,7 +475,7 @@ class CellAnnotationModelWrapper():
         return split_data, gene_ids
 
 
-    def train(self, num_epochs, adata, seed, adata_test1, adata_test2=None, find_lr=False, warm_up_epochs=0, early_stop=False):
+    def train(self, num_epochs, adata, seed, adata_test, find_lr=False, warm_up_epochs=0, early_stop=False):
 
         split_data, gene_ids = self._get_split_data(adata)
         best_val_loss = float("inf")
@@ -515,15 +515,11 @@ class CellAnnotationModelWrapper():
                 with open(LR_FINDER_LOG_DIR + self.model_name, 'a') as f:
                     f.write(f"{scheduler.get_last_lr()[0]} {epoch_loss}\n")
             val_loss, val_err = self._evaluate(loader=valid_loader, epoch=epoch)
-            _, _, test_results1 = self.test(adata_test1, eval_batch_size=self.eval_batch_size)
-            #_, _, test_results2 = self.test(adata_test2, eval_batch_size=self.eval_batch_size)
+            _, _, test_results = self.test(adata_test, eval_batch_size=self.eval_batch_size)
 
             self.logger.info(
-                f"Test results on Muraro: {test_results1}"
+                f"Test results: {test_results}"
             )
-            #self.logger.info(
-            #    f"Test results on Xin: {test_results2}"
-            #)
 
             elapsed = time.time() - epoch_start_time
             self.logger.info("-" * 89)
@@ -535,7 +531,7 @@ class CellAnnotationModelWrapper():
 
             # Early stopping mechanism
             prev_test_loss_avg = curr_test_loss_avg
-            last_test_losses[(epoch - 1) % EARLY_STOPPING_EPOCHS_AVG] = test_results1["test/macro_f1"]
+            last_test_losses[(epoch - 1) % EARLY_STOPPING_EPOCHS_AVG] = test_results["test/macro_f1"]
             curr_test_loss_avg = np.sum(last_test_losses) / np.minimum(EARLY_STOPPING_EPOCHS_AVG, epoch)
             if curr_test_loss_avg >= prev_test_loss_avg:
                 early_stopping_counter += 1
