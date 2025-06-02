@@ -38,7 +38,7 @@ RETRAINED_MODELS_DIR = "retrained_models/"
 EARLY_STOPPING_EPOCHS_AVG = 3
 EARLY_STOPPING_PATIENCE = 10
 LR_FINDER_LOG_DIR = "cell_annotation_logs/lr_finder/"
-FIND_LR_PERIOD = 300
+FIND_LR_PERIOD = 600
 FIND_LR_GAMMA = 3
 
 TrainTestSplitResults = namedtuple(
