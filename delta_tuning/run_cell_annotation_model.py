@@ -312,7 +312,7 @@ def main():
     parser.add_argument("--model", type=str, default=None, help="Path to the pretrained model to load. Must match the model config file. If None, will initialize a new model.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--test_data", type=str, default="Muraro", help="Which dataset to use as the test data, only for the Pancreatic dataset. Must be one of: Baron_Human, Muraro, Segerstolpe, Xin")
-    parser.add_argument("--train_data", type=str, default="filtered_pancreas", help="Which dataset to use for the train data.")
+    parser.add_argument("--train_data", type=str, default="pancreas", help="Which dataset to use for the train data.")
     parser.add_argument("--max_seq_len", type=int, default=3001, help="Maximum sequence length")
     parser.add_argument("--epochs", type=int, default=1000, help="Number of epochs to train the model")
     parser.add_argument("--model_name", type=str, default="awesome_model", help="The name of the model to be saved")
