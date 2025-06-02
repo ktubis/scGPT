@@ -329,6 +329,7 @@ def main():
     parser.add_argument("--batch_size", type=int, default=32, help="The batch size to use for training.")
     parser.add_argument("--warm_up_epochs", type=int, default=0, help="The number of warm up epochs to use for training.")
     parser.add_argument("--early_stop", action='store_true', help="Whether to use early stopping.")
+    parser.add_argument("--train_data", type=str, default="pancreas", help="Which dataset to use as the test data")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -339,7 +340,8 @@ def main():
     vocab = GeneVocab.from_file(VOCAB_PATH)
     add_tokens_to_vocab(config_dict["pad_token"], vocab)
 
-    ds_loader = load_ds.PancreaticDatasetOLD()
+    #ds_loader = load_ds.PancreaticDatasetOLD()
+    ds_loader = load_ds.get_data_loader(args.train_data)
     adata_train, adata_test = get_data_loaders(ds_loader, vocab, config_dict, args.test_data)
 
     num_celltypes = ds_loader.get_num_celltypes()
