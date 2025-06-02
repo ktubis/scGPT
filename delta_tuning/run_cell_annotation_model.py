@@ -134,7 +134,7 @@ def add_delta_model(model_config, cam_model, wandb_config):
 
 def get_data_loaders(ds_loader, vocab, config_dict, test_data):
     adata_train, adata_test = ds_loader.get_train_test(test_data)
-    adata_test2 = ds_loader.adata[ds_loader.adata.obs["batch_id"] == ds_loader.dataset_batch_dict["Xin"]].copy()
+    #adata_test2 = ds_loader.adata[ds_loader.adata.obs["batch_id"] == ds_loader.dataset_batch_dict["Xin"]].copy()
 
     # set up the preprocessor, use the args to config the workflow
     preprocessor = Preprocessor(
@@ -146,9 +146,9 @@ def get_data_loaders(ds_loader, vocab, config_dict, test_data):
 
     adata_train = preprocess_data(adata_train, preprocessor, vocab)
     adata_test = preprocess_data(adata_test, preprocessor, vocab)
-    adata_test2 = preprocess_data(adata_test2, preprocessor, vocab)
+    #adata_test2 = preprocess_data(adata_test2, preprocessor, vocab)
 
-    return adata_train, adata_test, adata_test2
+    return adata_train, adata_test#, adata_test2
 
 def add_tokens_to_vocab(pad_token, vocab):
     special_tokens = [pad_token, "<cls>", "<eoc>"]
@@ -339,8 +339,8 @@ def main():
     vocab = GeneVocab.from_file(VOCAB_PATH)
     add_tokens_to_vocab(config_dict["pad_token"], vocab)
 
-    ds_loader = load_ds.PancreaticDataset()
-    adata_train, adata_test, adata_test2 = get_data_loaders(ds_loader, vocab, config_dict, args.test_data)
+    ds_loader = load_ds.PancreaticDatasetOLD()
+    adata_train, adata_test = get_data_loaders(ds_loader, vocab, config_dict, args.test_data)
 
     num_celltypes = ds_loader.get_num_celltypes()
     num_batches = ds_loader.get_num_batches()
@@ -425,7 +425,7 @@ def main():
     else:
         cam = CellAnnotationModelWrapper(**model_init_params)
         if not args.inference:
-            train_model(args, adata_train, adata_test, cam, wandb_config, adata_test2, warm_up_epochs=args.warm_up_epochs)
+            train_model(args, adata_train, adata_test, cam, wandb_config, warm_up_epochs=args.warm_up_epochs)
 
         _, _, results = cam.test(adata_test)
         

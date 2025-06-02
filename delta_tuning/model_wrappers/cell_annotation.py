@@ -478,7 +478,7 @@ class CellAnnotationModelWrapper():
         return split_data, gene_ids
 
 
-    def train(self, num_epochs, adata, seed, adata_test1, adata_test2, find_lr=False, warm_up_epochs=0, early_stop=False):
+    def train(self, num_epochs, adata, seed, adata_test1, adata_test2=None, find_lr=False, warm_up_epochs=0, early_stop=False):
 
         split_data, gene_ids = self._get_split_data(adata)
         best_val_loss = float("inf")
@@ -519,14 +519,14 @@ class CellAnnotationModelWrapper():
                     f.write(f"{scheduler.get_last_lr()[0]} {epoch_loss}\n")
             val_loss, val_err = self._evaluate(loader=valid_loader, epoch=epoch)
             _, _, test_results1 = self.test(adata_test1, eval_batch_size=self.eval_batch_size)
-            _, _, test_results2 = self.test(adata_test2, eval_batch_size=self.eval_batch_size)
+            #_, _, test_results2 = self.test(adata_test2, eval_batch_size=self.eval_batch_size)
 
             self.logger.info(
                 f"Test results on Muraro: {test_results1}"
             )
-            self.logger.info(
-                f"Test results on Xin: {test_results2}"
-            )
+            #self.logger.info(
+            #    f"Test results on Xin: {test_results2}"
+            #)
 
             elapsed = time.time() - epoch_start_time
             self.logger.info("-" * 89)
