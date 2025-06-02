@@ -279,7 +279,7 @@ def find_hyperparams(model_init_params, grid_search_config, adata_train, adata_t
     return optuna_objective
 
 
-def train_model(args, adata_train, adata_test, cam, wandb_config, adata_test2=None, warm_up_epochs=0):
+def train_model(args, adata_train, adata_test, cam, wandb_config, warm_up_epochs=0):
     if args.delta_configs_file:
         with open(args.delta_configs_file, 'r') as f:
             delta_config = json.load(f)
@@ -301,7 +301,7 @@ def train_model(args, adata_train, adata_test, cam, wandb_config, adata_test2=No
     if args.wandb:
         init_wandb(wandb_config)
         wandb.watch(cam.model, log="all", log_graph=True)
-    cam.train(args.epochs, adata_train, args.seed, adata_test=adata_test, adata_test2=adata_test2, find_lr=args.find_lr, warm_up_epochs=warm_up_epochs, early_stop=args.early_stop)
+    cam.train(args.epochs, adata_train, args.seed, adata_test=adata_test, find_lr=args.find_lr, warm_up_epochs=warm_up_epochs, early_stop=args.early_stop)
 
 
 def main():
