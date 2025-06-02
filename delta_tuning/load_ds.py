@@ -59,9 +59,12 @@ class DataLoader(ABC):
         
         celltypes = set(self.train_data.obs["celltype"].values) | set(self.test_data.obs["celltype"].values)
         self.num_celltypes = len(celltypes)
+        print("CELLTYPES:", celltypes)
         celltype_to_id = {ct: i for i, ct in enumerate(sorted(celltypes))}
         self.train_data.obs["celltype_id"] = self.train_data.obs["celltype"].map(celltype_to_id)
+        print("Celltype to ID mapping:", self.train_data.obs["celltype_id"].unique())
         self.test_data.obs["celltype_id"] = self.test_data.obs["celltype"].map(celltype_to_id)
+        print("Celltype to ID mapping test:", self.test_data.obs["celltype_id"].unique())
 
     def get_num_celltypes(self):
         return self.num_celltypes
@@ -164,6 +167,7 @@ class PancreaticDataset(DataLoader):
         """
 
         available_names = [ds.value for ds in PancreaticDataset.SupportedDatasets]
+        print("test_ds_name:", test_ds_name)
         if test_ds_name not in available_names:
             raise ValueError("Name of the test dataset is not supported. Should be one of: ",
                              available_names)

@@ -301,7 +301,7 @@ def train_model(args, adata_train, adata_test, cam, wandb_config, adata_test2=No
     if args.wandb:
         init_wandb(wandb_config)
         wandb.watch(cam.model, log="all", log_graph=True)
-    cam.train(args.epochs, adata_train, args.seed, adata_test=adata_test, find_lr=args.find_lr, warm_up_epochs=warm_up_epochs, early_stop=args.early_stop)
+    cam.train(args.epochs, adata_train, args.seed, adata_test1=adata_test, find_lr=args.find_lr, warm_up_epochs=warm_up_epochs, early_stop=args.early_stop)
 
 
 def main():
@@ -328,6 +328,7 @@ def main():
     parser.add_argument("--batch_size", type=int, default=32, help="The batch size to use for training.")
     parser.add_argument("--warm_up_epochs", type=int, default=0, help="The number of warm up epochs to use for training.")
     parser.add_argument("--early_stop", action='store_true', help="Whether to use early stopping.")
+    #parser.add_argument("--train_data", type=str, default="pancreas", help="Which dataset to use as the test data")
     args = parser.parse_args()
 
     supported_datasets = [ds.value for ds in load_ds.SupportedDatasets]
