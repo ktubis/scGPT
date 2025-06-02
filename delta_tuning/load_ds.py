@@ -38,6 +38,18 @@ class DataLoader(ABC):
     def get_train_test(self, test_ds_name=None):
         pass
 
+    def get_num_batches(self):
+        """
+        Get the number of unique batches in the dataset.
+        Returns:
+            int: The number of unique batches.
+        """
+        if "batch_id" in self.train_data.obs:
+            return len(self.train_data.obs["batch_id"].unique())
+        else:
+            raise ValueError("Batch information is not available in the dataset. "
+                             "Ensure that the dataset contains a 'batch_id' column in obs.")
+        
 
 class FilteredPancreas(DataLoader):
     DATASET_PATH = "data/datasets/annotation_pancreas/"
@@ -62,9 +74,19 @@ class MS(DataLoader):
     TRAIN_DATA = "filtered_ms_adata.h5ad"
     TEST_DATA = "c_data.h5ad"
 
+    @staticmethod
+    def preprocess_data(adata):
+        """
+        Preprocess the AnnData object by renaming columns and ensuring categorical types.
+        """
+        adata.obs.rename(columns={"str_batch": "batch_id"}, inplace=True)
+        adata.obs["batch_id"] = adata.obs["batch_id"].astype("int")
+
     def __init__(self):
         self.train_data = ad.read_h5ad(MS.DATASET_PATH + MS.TRAIN_DATA)
+        self.__class__.preprocess_data(self.train_data)
         self.test_data = ad.read_h5ad(MS.DATASET_PATH + MS.TEST_DATA)
+        self.__class__.preprocess_data(self.test_data)
 
     def get_num_celltypes(self):
         return len(self.train_data.obs["celltype"].unique())
@@ -77,11 +99,20 @@ class Myeloid(DataLoader):
     TRAIN_DATA = "reference_adata.h5ad"
     TEST_DATA = "query_adata.h5ad"
 
+    @staticmethod
+    def preprocess_data(adata):
+        """
+        Preprocess the AnnData object by renaming columns and ensuring categorical types.
+        """
+        adata.obs.rename(columns={"cell_type": "celltype"}, inplace=True)
+        adata.obs.rename(columns={"batch": "batch_id"}, inplace=True)
+        adata.obs["batch_id"] = adata.obs["batch_id"].astype("int")
+
     def __init__(self):
         self.train_data = ad.read_h5ad(Myeloid.DATASET_PATH + Myeloid.TRAIN_DATA)
-        self.train_data.obs.rename(columns={"cell_type": "celltype"}, inplace=True)
+        self.__class__.preprocess_data(self.train_data)
         self.test_data = ad.read_h5ad(Myeloid.DATASET_PATH + Myeloid.TEST_DATA)
-        self.test_data.obs.rename(columns={"cell_type": "celltype"}, inplace=True)
+        self.__class__.preprocess_data(self.test_data)
 
     def get_num_celltypes(self):
         return len(self.train_data.obs["celltype"].unique())
@@ -108,8 +139,10 @@ class PancreaticDataset(DataLoader):
         """
 
         self.adata = ad.read_h5ad(PancreaticDataset._DATA_FILE)
-        self.adata_train = None
-        self.adata_test = None
+        self.adata.obs.rename(columns={"ds_on_concat": "batch_id"}, inplace=True)
+        self.adata.obs["batch_id"] = self.adata.obs["batch_id"].astype("int")
+        self.train_data = None
+        self.test_data = None
 
     
     def get_train_test(self, test_ds_name=None):
@@ -120,8 +153,8 @@ class PancreaticDataset(DataLoader):
             ds_name (str): The name of the dataset to split.
 
         Returns:
-            adata_train (AnnData): The training set AnnData object.
-            adata_test (AnnData): The testing set AnnData object.
+            train_data (AnnData): The training set AnnData object.
+            test_data (AnnData): The testing set AnnData object.
         """
 
         available_names = [ds.value for ds in PancreaticDataset.SupportedDatasets]
@@ -130,12 +163,12 @@ class PancreaticDataset(DataLoader):
             raise ValueError("Name of the test dataset is not supported. Should be one of: ",
                              available_names)
                 
-        self.adata_test = self.adata[self.adata.obs["dataset"] == test_ds_name].copy()
-        self.adata_train = self.adata[self.adata.obs["dataset"] != test_ds_name].copy()
+        self.test_data = self.adata[self.adata.obs["dataset"] == test_ds_name].copy()
+        self.train_data = self.adata[self.adata.obs["dataset"] != test_ds_name].copy()
 
-        print("TEST:", self.adata_test)
+        print("TEST:", self.test_data)
         
-        return self.adata_train, self.adata_test
+        return self.train_data, self.test_data
     
     def get_num_celltypes(self):
         """
@@ -144,10 +177,10 @@ class PancreaticDataset(DataLoader):
         Returns:
             int: The number of unique cell types.
         """
-        if self.adata_train is None:
+        if self.train_data is None:
             warnings.warn("The train dataset is not specified. Returning the celltypes for the entire dataset, including test.")
             return len(self.adata.obs["celltype"].unique())
-        return len(self.adata_train.obs["celltype"].unique())
+        return len(self.train_data.obs["celltype"].unique())
     
 
 class PancreaticDatasetOLD():

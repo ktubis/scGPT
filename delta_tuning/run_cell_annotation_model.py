@@ -348,6 +348,7 @@ def main():
     ds_loader = load_ds.get_data_loader(args.train_data)
     adata_train, adata_test = get_data_loaders(ds_loader, vocab, config_dict, args.test_data)
     num_celltypes = ds_loader.get_num_celltypes()
+    num_batches = ds_loader.get_num_batches()
 
     # Get the current date and time, format as 'yymmddhhmm'
     formatted_time = datetime.now().strftime('%y%m%d%H%M')
@@ -365,6 +366,7 @@ def main():
         "vocab": vocab,
         "config_dict": config_dict,
         "num_celltypes": num_celltypes,
+        "num_batches": num_batches,
         "model_name": model_name,
         "lr": args.lr,
         "log_wandb": args.wandb,
@@ -380,6 +382,7 @@ def main():
         "epochs": args.epochs,
         "seed": args.seed,
         "log_wandb": args.wandb,
+        "dataset": args.train_data,
     }
 
     if args.hyperparam_search_config:
