@@ -48,8 +48,8 @@ TrainTestSplitResults = namedtuple(
         "valid_data",
         "train_celltype_labels",
         "valid_celltype_labels",
-        #"train_batch_labels",
-        #"valid_batch_labels",
+        "train_batch_labels",
+        "valid_batch_labels",
     ],
 )
 
@@ -100,10 +100,11 @@ def move_optimizer_params_to_cuda(optimizer):
 
 class CellAnnotationModelWrapper():
 
-    def __init__(self, model_path, pad_value, vocab, config_dict, num_celltypes, max_seq_len, lr=LR, batch_size=BATCH_SIZE, eval_batch_size=BATCH_SIZE, log_dir="cell_annotation_logs/",
+    def __init__(self, model_path, pad_value, vocab, config_dict, num_batches, num_celltypes, max_seq_len, lr=LR, batch_size=BATCH_SIZE, eval_batch_size=BATCH_SIZE, log_dir="cell_annotation_logs/",
                  mask_value=MASK_VALUE, mask_ratio=MASK_RATIO, model_name="awesome_model", log_wandb=False, schedule_interval=SCHEDULE_INTERVAL, schedule_ratio=SCHEDULE_RATIO):
         
         self.model = TransformerModel(ntoken=len(vocab), 
+                            num_batch_labels=num_batches,
                             n_cls=num_celltypes, 
                             vocab=vocab,
                             seq_len=max_seq_len,
@@ -137,8 +138,7 @@ class CellAnnotationModelWrapper():
             self.pad_value = config_dict["n_bins"]  # for padding gene expr values
         else:
             self.mask_value = mask_value
-            self.pad_value = pad_value
-            
+            self.pad_value = pad_value            
 
     def load_model(self, model_path):
         try:
@@ -208,8 +208,8 @@ class CellAnnotationModelWrapper():
             tokenized_valid["values"],
         )
 
-        #tensor_batch_labels_train = torch.from_numpy(split_data.train_batch_labels).long()
-        #tensor_batch_labels_valid = torch.from_numpy(split_data.valid_batch_labels).long()
+        tensor_batch_labels_train = torch.from_numpy(split_data.train_batch_labels).long()
+        tensor_batch_labels_valid = torch.from_numpy(split_data.valid_batch_labels).long()
 
         tensor_celltype_labels_train = torch.from_numpy(split_data.train_celltype_labels).long()
         tensor_celltype_labels_valid = torch.from_numpy(split_data.valid_celltype_labels).long()
@@ -218,14 +218,14 @@ class CellAnnotationModelWrapper():
             "gene_ids": input_gene_ids_train,
             "values": input_values_train,
             "target_values": target_values_train,
-            #"batch_labels": tensor_batch_labels_train,
+            "batch_labels": tensor_batch_labels_train,
             "celltype_labels": tensor_celltype_labels_train,
         }
         valid_data_pt = {
             "gene_ids": input_gene_ids_valid,
             "values": input_values_valid,
             "target_values": target_values_valid,
-            #"batch_labels": tensor_batch_labels_valid,
+            "batch_labels": tensor_batch_labels_valid,
             "celltype_labels": tensor_celltype_labels_valid,
         }
 
@@ -298,8 +298,11 @@ class CellAnnotationModelWrapper():
             else adata.layers[INPUT_LAYER]
         )
 
-        celltypes_labels = adata.obs["celltype"].astype('category').cat.codes  # make sure count from 0
+        celltypes_labels = adata.obs["celltype_id"].tolist()  # make sure count from 0
         celltypes_labels = np.array(celltypes_labels)
+
+        batch_ids = adata.obs["batch_id"].tolist()
+        batch_ids = np.array([int(batch_id) for batch_id in batch_ids])
 
         genes = adata.var.index.tolist()
         gene_ids = np.array(self.vocab(genes), dtype=int)
@@ -325,7 +328,7 @@ class CellAnnotationModelWrapper():
             "gene_ids": tokenized_test["genes"],
             "values": input_values_test,
             "target_values": tokenized_test["values"],
-            #"batch_labels": torch.from_numpy(batch_ids).long(),
+            "batch_labels": torch.from_numpy(batch_ids).long(),
             "celltype_labels": torch.from_numpy(celltypes_labels).long(),
         }
 
@@ -460,16 +463,19 @@ class CellAnnotationModelWrapper():
         celltypes_labels = adata.obs["celltype"].astype('category').cat.codes  # make sure count from 0
         celltypes_labels = np.array(celltypes_labels)
 
+        batch_ids = adata.obs["batch_id"].tolist()
+        batch_ids = np.array(batch_ids)
+
         genes = adata.var.index.tolist()
         gene_ids = np.array(self.vocab(genes), dtype=int)
 
         split_data = TrainTestSplitResults(*train_test_split(
-            all_counts, celltypes_labels, test_size=0.1, shuffle=True
+            all_counts, celltypes_labels, batch_ids, test_size=0.1, shuffle=True
         ))
         return split_data, gene_ids
 
 
-    def train(self, num_epochs, adata, seed, adata_test, find_lr=False, warm_up_epochs=0, early_stop=False):
+    def train(self, num_epochs, adata, seed, adata_test1, adata_test2=None, find_lr=False, warm_up_epochs=0, early_stop=False):
 
         split_data, gene_ids = self._get_split_data(adata)
         best_val_loss = float("inf")
@@ -509,11 +515,15 @@ class CellAnnotationModelWrapper():
                 with open(LR_FINDER_LOG_DIR + self.model_name, 'a') as f:
                     f.write(f"{scheduler.get_last_lr()[0]} {epoch_loss}\n")
             val_loss, val_err = self._evaluate(loader=valid_loader, epoch=epoch)
-            _, _, test_results = self.test(adata_test, eval_batch_size=self.eval_batch_size)
+            _, _, test_results1 = self.test(adata_test1, eval_batch_size=self.eval_batch_size)
+            #_, _, test_results2 = self.test(adata_test2, eval_batch_size=self.eval_batch_size)
 
             self.logger.info(
-                f"Test results on Test set: {test_results}"
+                f"Test results on Muraro: {test_results1}"
             )
+            #self.logger.info(
+            #    f"Test results on Xin: {test_results2}"
+            #)
 
             elapsed = time.time() - epoch_start_time
             self.logger.info("-" * 89)
@@ -525,7 +535,7 @@ class CellAnnotationModelWrapper():
 
             # Early stopping mechanism
             prev_test_loss_avg = curr_test_loss_avg
-            last_test_losses[(epoch - 1) % EARLY_STOPPING_EPOCHS_AVG] = test_results["test/macro_f1"]
+            last_test_losses[(epoch - 1) % EARLY_STOPPING_EPOCHS_AVG] = test_results1["test/macro_f1"]
             curr_test_loss_avg = np.sum(last_test_losses) / np.minimum(EARLY_STOPPING_EPOCHS_AVG, epoch)
             if curr_test_loss_avg >= prev_test_loss_avg:
                 early_stopping_counter += 1

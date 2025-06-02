@@ -134,7 +134,6 @@ def add_delta_model(model_config, cam_model, wandb_config):
 
 def get_data_loaders(ds_loader, vocab, config_dict, test_data):
     adata_train, adata_test = ds_loader.get_train_test(test_data)
-    #adata_test2 = ds_loader.adata[ds_loader.adata.obs["batch_id"] == ds_loader.dataset_batch_dict["Xin"]].copy()
 
     # set up the preprocessor, use the args to config the workflow
     preprocessor = Preprocessor(
@@ -146,7 +145,6 @@ def get_data_loaders(ds_loader, vocab, config_dict, test_data):
 
     adata_train = preprocess_data(adata_train, preprocessor, vocab)
     adata_test = preprocess_data(adata_test, preprocessor, vocab)
-    #adata_test2 = preprocess_data(adata_test2, preprocessor, vocab)
 
     return adata_train, adata_test
 
@@ -303,7 +301,7 @@ def train_model(args, adata_train, adata_test, cam, wandb_config, adata_test2=No
     if args.wandb:
         init_wandb(wandb_config)
         wandb.watch(cam.model, log="all", log_graph=True)
-    cam.train(args.epochs, adata_train, args.seed, adata_test=adata_test, find_lr=args.find_lr, warm_up_epochs=warm_up_epochs, early_stop=args.early_stop)
+    cam.train(args.epochs, adata_train, args.seed, adata_test1=adata_test, find_lr=args.find_lr, warm_up_epochs=warm_up_epochs, early_stop=args.early_stop)
 
 
 def main():
@@ -330,6 +328,7 @@ def main():
     parser.add_argument("--batch_size", type=int, default=32, help="The batch size to use for training.")
     parser.add_argument("--warm_up_epochs", type=int, default=0, help="The number of warm up epochs to use for training.")
     parser.add_argument("--early_stop", action='store_true', help="Whether to use early stopping.")
+    #parser.add_argument("--train_data", type=str, default="pancreas", help="Which dataset to use as the test data")
     args = parser.parse_args()
 
     supported_datasets = [ds.value for ds in load_ds.SupportedDatasets]
@@ -348,6 +347,7 @@ def main():
     ds_loader = load_ds.get_data_loader(args.train_data)
     adata_train, adata_test = get_data_loaders(ds_loader, vocab, config_dict, args.test_data)
     num_celltypes = ds_loader.get_num_celltypes()
+    num_batches = ds_loader.get_num_batches()
 
     # Get the current date and time, format as 'yymmddhhmm'
     formatted_time = datetime.now().strftime('%y%m%d%H%M')
@@ -365,6 +365,7 @@ def main():
         "vocab": vocab,
         "config_dict": config_dict,
         "num_celltypes": num_celltypes,
+        "num_batches": num_batches,
         "model_name": model_name,
         "lr": args.lr,
         "log_wandb": args.wandb,
@@ -380,6 +381,7 @@ def main():
         "epochs": args.epochs,
         "seed": args.seed,
         "log_wandb": args.wandb,
+        "dataset": args.train_data,
     }
 
     if args.hyperparam_search_config:
