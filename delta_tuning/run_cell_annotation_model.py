@@ -238,7 +238,7 @@ def find_hyperparams(model_init_params, grid_search_config, adata_train, adata_t
         max_lr = grid_search_dict["max_lr"]
 
         lr = trial.suggest_loguniform("lr", min_lr, max_lr)
-        delta_param = trial.suggest_categorical("delta_param", grid_search_dict["dela_params"])
+        delta_param = trial.suggest_categorical("delta_param", grid_search_dict["delta_params"])
         num_epochs = trial.suggest_categorical("epochs", grid_search_dict["epochs"])
         warm_up_percentage = trial.suggest_categorical("warm_up_percentage", grid_search_dict["warm_up_percentages"])
 
@@ -289,14 +289,12 @@ def train_model(args, adata_train, adata_test, cam, wandb_config, warm_up_epochs
     elif args.finetune_decoder:
         cam.finetune_cls_decoder()
         wandb_config["delta_method"] = "finetune_classifier"
+    elif args.train_transformer_modules:
+        cam.train_transformer_modules(args.train_transformer_modules)
+        wandb_config["train_transformer_modules"] = args.train_transformer_modules
     else:
         assert (args.finetune_all_weights == True), "If you want to finetune all weights, please set the finetune_decoder flag to True."
         wandb_config["delta_method"] = "all_weights"
-
-    if args.freeze_modules:
-        cam.freeze_modules(args.freeze_modules)
-        cam.print_trainable_parameters()
-        wandb_config["freeze_modules"] = args.freeze_modules
     
     if args.wandb:
         init_wandb(wandb_config)
@@ -324,7 +322,8 @@ def main():
     parser.add_argument("--schedule_interval", type=int, default=20, help="The interval at which to schedule the learning rate.")
     parser.add_argument("--schedule_ratio", type=float, default=0.9, help="The ratio of the learning rate to schedule.")
     parser.add_argument("--hyperparam_search_config", default=None, help="The configuration from which to do hyperparameter search.")
-    parser.add_argument("--freeze_modules", type=str, nargs="+", default=[], help="The modules to freeze. Must be a list of strings.")
+    parser.add_argument("--train_transformer_modules", type=int, nargs="+", default=[], help="The trainable transformer modules." \
+                        "Must be a list of integers. All other modules will be frozen. If empty, all modules will be trainable.")
     parser.add_argument("--batch_size", type=int, default=32, help="The batch size to use for training.")
     parser.add_argument("--warm_up_epochs", type=int, default=0, help="The number of warm up epochs to use for training.")
     parser.add_argument("--early_stop", action='store_true', help="Whether to use early stopping.")
@@ -393,6 +392,9 @@ def main():
             with open(args.delta_configs_file, 'r') as f:
                 delta_config = json.load(f)
             delta_method = delta_config["delta_type"]
+        elif args.train_transformer_modules:
+            cam.train_transformer_modules(args.train_transformer_modules)
+            wandb_config["train_transformer_modules"] = args.train_transformer_modules
         else:
             raise ValueError("Please provide a delta method for hyperparameter search.")
         
