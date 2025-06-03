@@ -6,6 +6,7 @@ import numpy as np
 from pathlib import Path
 from enum import Enum
 import warnings
+from scipy.sparse import issparse
 
 
 class SupportedDatasets(Enum):
@@ -81,6 +82,8 @@ class FilteredPancreas(DataLoader):
     def __init__(self):
         self.train_data = ad.read_h5ad(FilteredPancreas.DATASET_PATH + FilteredPancreas.TRAIN_DATA)
         self.train_data.obs.rename(columns={"Celltype": "celltype"}, inplace=True)
+        # Remove the Muraro dataset from the training data
+        self.train_data = self.train_data[self.train_data.obs["batch_id"] == 0]
         self.test_data = ad.read_h5ad(FilteredPancreas.DATASET_PATH + FilteredPancreas.TEST_DATA)
         self.test_data.obs.rename(columns={"Celltype": "celltype"}, inplace=True)
         self.add_celltype_id()
