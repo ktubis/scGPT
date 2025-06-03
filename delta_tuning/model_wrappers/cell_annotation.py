@@ -508,7 +508,6 @@ class CellAnnotationModelWrapper():
         curr_test_loss_avg = np.inf
         for epoch in range(1, num_epochs + 1):
             epoch_start_time = time.time()
-
             train_loader, valid_loader = self._get_train_valid_data_per_epoch(split_data, gene_ids)
             epoch_loss = self._train_step(train_loader, optimizer, scheduler, scaler, epoch)
             if find_lr:
@@ -586,3 +585,22 @@ class CellAnnotationModelWrapper():
 
         trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad) / sum(p.numel() for p in self.model.parameters())
         print(f"Trainable parameters: {trainable_params}")
+
+    def train_transformer_modules(self, train_modules: list):
+        """
+        Freeze all of the modules except the specified transformer modules.
+        :param train_modules: list of module names to freeze
+        """
+
+        self.finetune_cls_decoder()  # make sure cls decoder is trainable
+
+        modules_to_train = ["transformer_encoder.layers." + str(i) for i in train_modules]
+
+        for name, module in self.model.named_modules():
+            if name.startswith(tuple(modules_to_train)):
+                for param in module.parameters():
+                    param.requires_grad = True
+                self.logger.info(f"Un-freezing module {name}")
+
+        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad) / sum(p.numel() for p in self.model.parameters())
+        print(f"Trainable parameters after unfreezing transformers: {trainable_params}")
