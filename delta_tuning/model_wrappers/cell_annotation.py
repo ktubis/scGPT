@@ -101,7 +101,8 @@ def move_optimizer_params_to_cuda(optimizer):
 class CellAnnotationModelWrapper():
 
     def __init__(self, model_path, pad_value, vocab, config_dict, num_batches, num_celltypes, max_seq_len, lr=LR, batch_size=BATCH_SIZE, eval_batch_size=BATCH_SIZE, log_dir="cell_annotation_logs/",
-                 mask_value=MASK_VALUE, mask_ratio=MASK_RATIO, model_name="awesome_model", log_wandb=False, schedule_interval=SCHEDULE_INTERVAL, schedule_ratio=SCHEDULE_RATIO):
+                 mask_value=MASK_VALUE, mask_ratio=MASK_RATIO, model_name="awesome_model", log_wandb=False, schedule_interval=SCHEDULE_INTERVAL, schedule_ratio=SCHEDULE_RATIO,
+                 delta_method=None, delta_config=None):
         
         self.model = TransformerModel(ntoken=len(vocab), 
                             num_batch_labels=num_batches,
@@ -133,12 +134,9 @@ class CellAnnotationModelWrapper():
         self.model.to(self.device)
         self.log_wandb = log_wandb
 
-        if config_dict["input_emb_style"] == "category":
-            self.mask_value = config_dict["n_bins"] + 1
-            self.pad_value = config_dict["n_bins"]  # for padding gene expr values
-        else:
-            self.mask_value = mask_value
-            self.pad_value = pad_value            
+        # That's if input_embed_style in the config is "continuous"
+        self.mask_value = mask_value
+        self.pad_value = pad_value            
 
     def load_model(self, model_path):
         try:
@@ -574,33 +572,3 @@ class CellAnnotationModelWrapper():
                 )
 
             #scheduler.step()
-
-
-    def finetune_cls_decoder(self):
-        for param in self.model.parameters():
-            param.requires_grad = False
-        
-        for param in self.model.cls_decoder.parameters():
-            param.requires_grad = True
-
-        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad) / sum(p.numel() for p in self.model.parameters())
-        print(f"Trainable parameters: {trainable_params}")
-
-    def train_transformer_modules(self, train_modules: list):
-        """
-        Freeze all of the modules except the specified transformer modules.
-        :param train_modules: list of module names to freeze
-        """
-
-        self.finetune_cls_decoder()  # make sure cls decoder is trainable
-
-        modules_to_train = ["transformer_encoder.layers." + str(i) for i in train_modules]
-
-        for name, module in self.model.named_modules():
-            if name.startswith(tuple(modules_to_train)):
-                for param in module.parameters():
-                    param.requires_grad = True
-                self.logger.info(f"Un-freezing module {name}")
-
-        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad) / sum(p.numel() for p in self.model.parameters())
-        print(f"Trainable parameters after unfreezing transformers: {trainable_params}")
