@@ -289,7 +289,7 @@ class CellAnnotationModelWrapper():
 
 
 
-    def test(self, adata: DataLoader, eval_batch_size=EVAL_BATCH_SIZE) -> float:
+    def test(self, adata: DataLoader, eval_batch_size=EVAL_BATCH_SIZE, predictions_file=None) -> float:
         all_counts = (
             adata.layers[INPUT_LAYER].A
             if issparse(adata.layers[INPUT_LAYER])
@@ -356,6 +356,11 @@ class CellAnnotationModelWrapper():
             "test/recall": recall,
             "test/macro_f1": macro_f1,
         }
+
+        if predictions_file is not None:
+            predictions_df = adata.obs.copy()
+            predictions_df["predicted_celltype_id"] = predictions
+            predictions_df.to_csv(predictions_file, index=True)
 
         return predictions, celltypes_labels, results
 

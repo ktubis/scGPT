@@ -24,9 +24,6 @@ def add_open_delta_model(cam_model, delta_model_config, wandb_config):
     cam_model.to("cuda")
     delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
 
-    for name, param in cam_model.named_parameters():
-        print(name, param.numel())
-
 
 def finetune_cls_decoder(cam: CellAnnotationModelWrapper):
     for param in cam.model.parameters():
