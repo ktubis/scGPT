@@ -341,7 +341,7 @@ def main():
         if not args.inference:
             train_model(args, adata_train, adata_test, cam, delta_config, wandb_config, warm_up_epochs=args.warm_up_epochs)
         else:
-            predictions_file = f"predictions/{model_name}_{args.train_data}.csv"
+            predictions_file = f"predictions/{model_name}_{args.train_data}_{args.seed}.csv"
 
         _, _, results = cam.test(adata_test, predictions_file=predictions_file if args.inference else None)
         
