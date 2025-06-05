@@ -21,6 +21,7 @@ import wandb
 from OpenDelta.opendelta import AdapterModel, SoftPromptModel, LoraModel
 from transformers import get_linear_schedule_with_warmup
 import logging
+import add_delta_method
 
 sys.path.insert(0, "../")
 from scgpt.model import TransformerModel
@@ -77,60 +78,6 @@ def preprocess_data(adata, preprocessor, vocab):
     ]
     return adata[:, adata.var["id_in_vocab"] >= 0]
 
-def get_delta_config(method_name, delta_param):
-    if method_name == "adapter":
-        return {
-            "delta_type": "adapter",
-            "bottleneck_dim": delta_param,
-        }
-    if method_name == "soft_prompt":
-        return {
-            "delta_type": "soft_prompt",
-            "soft_token_num": delta_param,
-        }
-    if method_name == "lora":
-        return {
-            "delta_type": "lora",
-            "lora_r": delta_param,
-        }
-
-def add_delta_model(model_config, cam_model, wandb_config):
-    if model_config["delta_type"] == "adapter":
-        if "modified_modules" in model_config:
-            modified_modules = model_config["modified_modules"]
-        else:
-            modified_modules = []
-            for i in range(cam_model.nlayers):
-                modified_modules.append(f"transformer_encoder.layers.{i}.linear2")
-        delta_model = AdapterModel(backbone_model=cam_model, bottleneck_dim=model_config["bottleneck_dim"],
-                                   modified_modules=modified_modules)
-        cam_model.to("cuda")
-        wandb_config["bottleneck_dim"] = model_config["bottleneck_dim"]
-        #delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
-    if model_config["delta_type"] == "soft_prompt":
-        delta_model = SoftPromptModel(backbone_model=cam_model, soft_token_num=model_config["soft_token_num"])
-        wandb_config["soft_token_num"] = model_config["soft_token_num"]
-        #delta_model.freeze_module(exclude=['deltas'])
-    if model_config["delta_type"] == "lora":
-        modified_modules = []
-        for i in range(cam_model.nlayers):
-            modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.Q")
-            modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.V")
-        print("LEN MODIFIED MODULES:", len(modified_modules))
-        delta_model = LoraModel(backbone_model=cam_model, lora_r=model_config["lora_r"], modified_modules=modified_modules)
-        cam_model.to("cuda")
-        wandb_config["lora_r"] = model_config["lora_r"]
-    delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
-
-
-    cam_model.print_trainable_parameters()
-    for name, param in cam_model.named_parameters():
-        print(name, param.numel())
-    #delta_config = AutoDeltaConfig.from_dict(model_config)
-    #delta_model = AutoDeltaModel.from_config(delta_config, backbone_model=cam_model)
-    #cam_model.to("cuda")
-    #delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
-
 
 def get_data_loaders(ds_loader, vocab, config_dict, test_data):
     adata_train, adata_test = ds_loader.get_train_test(test_data)
@@ -161,9 +108,6 @@ def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, warm_
         cam.model.parameters(), lr=cam.lr, eps=cam.eps
     )
     move_optimizer_params_to_cuda(optimizer)
-    #scheduler = torch.optim.lr_scheduler.StepLR(
-    #        optimizer, cam.schedule_interval, gamma=cam.schedule_ratio
-    #    )
     num_training_steps = num_epochs * np.ceil(len(split_data.train_data) / batch_size)
     warm_up_steps = (warm_up_percentage / 100.) * num_training_steps
     scheduler = get_linear_schedule_with_warmup(
@@ -218,7 +162,6 @@ def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, warm_
             logger.info(f"Trial {trial.number} pruned at epoch {epoch} with eval loss: {eval_loss:.4f}")
             raise optuna.exceptions.TrialPruned()
 
-        #scheduler.step()
     # return the eval loss of the best epoch
     return best_eval_loss
         
@@ -229,33 +172,26 @@ def update_model_config(model_config, hyperparams):
     model_config["schedule_ratio"] = hyperparams["schedule_ratio"]
     return model_config
 
-def find_hyperparams(model_init_params, grid_search_config, adata_train, adata_test, delta_method, wandb_config, logger):
+def find_hyperparams(model_init_params, adata_train, adata_test, delta_config, hyperparam_search_config, wandb_config, logger):
     def optuna_objective(trial):
-        print("trial number:", trial.number)
-        with open(grid_search_config, "r") as f:
-            grid_search_dict = json.load(f)
-        min_lr = grid_search_dict["min_lr"]
-        max_lr = grid_search_dict["max_lr"]
-
+        min_lr = hyperparam_search_config["min_lr"]
+        max_lr = hyperparam_search_config["max_lr"]
         lr = trial.suggest_loguniform("lr", min_lr, max_lr)
-        delta_param = trial.suggest_categorical("delta_param", grid_search_dict["delta_params"])
-        num_epochs = trial.suggest_categorical("epochs", grid_search_dict["epochs"])
-        warm_up_percentage = trial.suggest_categorical("warm_up_percentage", grid_search_dict["warm_up_percentages"])
+        num_epochs = trial.suggest_categorical("epochs", hyperparam_search_config["epochs"])
+        warm_up_percentage = trial.suggest_categorical("warm_up_percentage", hyperparam_search_config["warm_up_percentages"])
+        if hyperparam_search_config.get("delta_params", None) is not None:
+            delta_param = trial.suggest_categorical("delta_param", hyperparam_search_config["delta_params"])
+            delta_config["delta_param"] = delta_param
+        else:
+            delta_param = -1
 
-        hyperparams = {
-            "lr": lr,
-            "delta_param": delta_param,
-            "num_epochs": num_epochs,
-            "warm_up_percentage": warm_up_percentage
-        }
-
-        logger.info(f"Trial {trial.number}: lr: {lr}, delta_param: {delta_param}, num_epochs: {num_epochs}, warm_up_percentage: {warm_up_percentage}, delta_method: {delta_method}")
+        delta_method = delta_config["delta_method"]
+        logger.info(f"Trial {trial.number}: lr: {lr}, delta_param: {delta_param}, num_epochs: {num_epochs}, \
+                      warm_up_percentage: {warm_up_percentage}, delta_method: {delta_method}")
 
         wandb_config["lr"] = lr
-        wandb_config["delta_param"] = delta_param
         wandb_config["num_epochs"] = num_epochs
         wandb_config["warm_up_percentage"] = warm_up_percentage
-        wandb_config["delta_method"] = delta_method
         wandb_config["model_name"] = f"{wandb_config['model_name']}_{trial.number}"
         init_wandb(wandb_config)
 
@@ -263,13 +199,7 @@ def find_hyperparams(model_init_params, grid_search_config, adata_train, adata_t
         model_init_params["lr"] = lr
         cam = CellAnnotationModelWrapper(**model_init_params)
 
-        if delta_method == "all_weights":
-            pass
-        elif delta_method == "finetune_classifier":
-            cam.finetune_cls_decoder()
-        else:
-            delta_config = get_delta_config(delta_method, delta_param)
-            add_delta_model(delta_config, cam.model, wandb_config)
+        add_delta_method.add_delta_method(cam, delta_config, wandb_config)
 
         wandb.watch(cam.model, log="all", log_graph=True)
         return hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial,
@@ -278,28 +208,51 @@ def find_hyperparams(model_init_params, grid_search_config, adata_train, adata_t
                                      logger=logger)
     return optuna_objective
 
+def run_optuna_hyperparam_search(model_init_params, adata_train, adata_test, delta_config,
+                                 wandb_config, hyperparam_search_config_file, logger):
+        os.makedirs(OPTUNA_LOGS_DIR, exist_ok=True)
+        name_log_file = f"optuna_trials_{wandb_config['model_name']}_delta_method_{delta_config['delta_method']}.log"
+        log_path = os.path.join(OPTUNA_LOGS_DIR, name_log_file)
+        # Set the Optuna logging level to INFO
+        optuna.logging.set_verbosity(optuna.logging.INFO)
+        logger = optuna.logging.get_logger("optuna")
+        optuna.logging.disable_default_handler()
 
-def train_model(args, adata_train, adata_test, cam, wandb_config, warm_up_epochs=0):
-    if args.delta_configs_file:
-        with open(args.delta_configs_file, 'r') as f:
-            delta_config = json.load(f)
-        print(delta_config)
-        add_delta_model(delta_config, cam.model, wandb_config)
-        print(cam.model)
-    elif args.finetune_decoder:
-        cam.finetune_cls_decoder()
-        wandb_config["delta_method"] = "finetune_classifier"
-    elif args.train_transformer_modules:
-        cam.train_transformer_modules(args.train_transformer_modules)
-        wandb_config["train_transformer_modules"] = args.train_transformer_modules
-    else:
-        assert (args.finetune_all_weights == True), "If you want to finetune all weights, please set the finetune_decoder flag to True."
-        wandb_config["delta_method"] = "all_weights"
-    
+        # Prevent double logging
+        if not logger.hasHandlers():
+            file_handler = logging.FileHandler(log_path)
+            formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+        
+        print("Running hyperparameter search...")
+        study = optuna.create_study(direction="minimize")
+        hyperparam_search_config = json.loads(hyperparam_search_config_file)
+        objective = find_hyperparams(model_init_params, adata_train, adata_test, delta_config,
+                                     hyperparam_search_config, wandb_config, logger)
+        n_trials = hyperparam_search_config["n_trials"]
+        study.optimize(objective, n_trials=n_trials)
+        best_trial = study.best_trial
+        print("Best trial:")
+        print("  Value: {}".format(best_trial.value))
+        print("  Params: ")
+        for key, value in best_trial.params.items():
+            print("    {}: {}".format(key, value))
+        df = study.trials_dataframe()
+
+        os.makedirs(HYPERPARAMS_SEARCH_DIR, exist_ok=True)
+        df.to_csv(f"{HYPERPARAMS_SEARCH_DIR}/{wandb_config['model_name']}.csv", index=False)
+
+
+def train_model(args, adata_train, adata_test, cam, delta_config, wandb_config, warm_up_epochs=0):
+    print(delta_config)
+    add_delta_method.add_delta_method(cam, delta_config, wandb_config)
+    print(cam.model)
     if args.wandb:
         init_wandb(wandb_config)
         wandb.watch(cam.model, log="all", log_graph=True)
-    cam.train(args.epochs, adata_train, args.seed, adata_test=adata_test, find_lr=args.find_lr, warm_up_epochs=warm_up_epochs, early_stop=args.early_stop)
+    cam.train(args.epochs, adata_train, args.seed, adata_test=adata_test, find_lr=args.find_lr,
+              warm_up_epochs=warm_up_epochs, early_stop=args.early_stop)
 
 
 def main():
@@ -312,18 +265,14 @@ def main():
     parser.add_argument("--max_seq_len", type=int, default=3001, help="Maximum sequence length")
     parser.add_argument("--epochs", type=int, default=1000, help="Number of epochs to train the model")
     parser.add_argument("--model_name", type=str, default="awesome_model", help="The name of the model to be saved")
-    parser.add_argument("--finetune_decoder", action='store_true', help="Whether to finetune only the decoder.")
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--wandb", action='store_true', help="Whether to use wandb for logging")
     parser.add_argument("--find_lr", action="store_true", help="Turns on the learning rate finder. The lr argument is the starting lr in that case, and it should be a negative power of 10.")
-    parser.add_argument("--delta_configs_file", default=None, help="The file that stores the configs of the delta models. Must be a dict of dicts. If None, doesn't add a delta model.")
-    parser.add_argument("--finetune_all_weights", action='store_true', help="Whether to finetune all the weights.")
+    parser.add_argument("--delta_config_file", help="The file that stores the configs of the delta models. Must be a dict of dicts. If None, doesn't add a delta model.")
     parser.add_argument("--inference", action='store_true', help="Whether to run inference on the given model.")
     parser.add_argument("--schedule_interval", type=int, default=20, help="The interval at which to schedule the learning rate.")
     parser.add_argument("--schedule_ratio", type=float, default=0.9, help="The ratio of the learning rate to schedule.")
     parser.add_argument("--hyperparam_search_config", default=None, help="The configuration from which to do hyperparameter search.")
-    parser.add_argument("--train_transformer_modules", type=int, nargs="+", default=[], help="The trainable transformer modules." \
-                        "Must be a list of integers. All other modules will be frozen. If empty, all modules will be trainable.")
     parser.add_argument("--batch_size", type=int, default=32, help="The batch size to use for training.")
     parser.add_argument("--warm_up_epochs", type=int, default=0, help="The number of warm up epochs to use for training.")
     parser.add_argument("--early_stop", action='store_true', help="Whether to use early stopping.")
@@ -333,7 +282,6 @@ def main():
     if args.train_data not in supported_datasets:
         raise ValueError("Name of the train dataset is not supported. Should be one of: ",
                          supported_datasets)
-
     set_seed(args.seed)
     with open(args.model_config_path, "r") as f:
         config_dict = json.load(f)
@@ -383,56 +331,17 @@ def main():
         "dataset": args.train_data,
     }
 
+    with open(args.delta_config_file, 'r') as f:
+        delta_config = json.load(f)
+
     if args.hyperparam_search_config:
-        if args.finetune_all_weights:
-            delta_method = "all_weights"
-        elif args.finetune_decoder:
-            delta_method = "finetune_classifier"
-        elif args.delta_configs_file:
-            with open(args.delta_configs_file, 'r') as f:
-                delta_config = json.load(f)
-            delta_method = delta_config["delta_type"]
-        elif args.train_transformer_modules:
-            cam.train_transformer_modules(args.train_transformer_modules)
-            wandb_config["train_transformer_modules"] = args.train_transformer_modules
-        else:
-            raise ValueError("Please provide a delta method for hyperparameter search.")
-        
-        os.makedirs(OPTUNA_LOGS_DIR, exist_ok=True)
-        name_log_file = f"optuna_trials_{wandb_config['model_name']}_delta_method_{delta_method}.log"
-        log_path = os.path.join(OPTUNA_LOGS_DIR, name_log_file)
-        # Set the Optuna logging level to INFO
-        optuna.logging.set_verbosity(optuna.logging.INFO)
-        logger = optuna.logging.get_logger("optuna")
-        optuna.logging.disable_default_handler()
-
-        # Prevent double logging
-        if not logger.hasHandlers():
-            file_handler = logging.FileHandler(log_path)
-            formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
-            file_handler.setFormatter(formatter)
-            logger.addHandler(file_handler)
-        
-        print("Running hyperparameter search...")
-        study = optuna.create_study(direction="maximize")
-        objective = find_hyperparams(model_init_params, args.hyperparam_search_config, adata_train, adata_test,
-                                     delta_method, wandb_config, logger)
-        study.optimize(objective, n_trials=30)
-        best_trial = study.best_trial
-        print("Best trial:")
-        print("  Value: {}".format(best_trial.value))
-        print("  Params: ")
-        for key, value in best_trial.params.items():
-            print("    {}: {}".format(key, value))
-        df = study.trials_dataframe()
-
-        os.makedirs(HYPERPARAMS_SEARCH_DIR, exist_ok=True)
-        df.to_csv(f"{HYPERPARAMS_SEARCH_DIR}/{model_name}.csv", index=False)
+        run_optuna_hyperparam_search(model_init_params, adata_train, adata_test, delta_config,
+                                     wandb_config, args.hyperparam_search_config, logging.getLogger())
 
     else:
         cam = CellAnnotationModelWrapper(**model_init_params)
         if not args.inference:
-            train_model(args, adata_train, adata_test, cam, wandb_config, warm_up_epochs=args.warm_up_epochs)
+            train_model(args, adata_train, adata_test, cam, delta_config, wandb_config, warm_up_epochs=args.warm_up_epochs)
 
         _, _, results = cam.test(adata_test)
         
