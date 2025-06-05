@@ -123,14 +123,11 @@ def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, warm_
     for epoch in range(1, num_epochs + 1):
         train_loader, valid_loader = cam._get_train_valid_data_per_epoch(split_data, gene_ids)
         epoch_loss = cam._train_step(train_loader, optimizer, scheduler, scaler, epoch)
-        print("epoch loss:", epoch_loss)
         eval_loss, _ = cam._evaluate(valid_loader, epoch)
         if eval_loss < best_eval_loss:
             best_eval_loss = eval_loss
-            print("best eval loss:", best_eval_loss)
         _, _, test_results = cam.test(adata_test)
         f1_score = test_results["test/macro_f1"]
-        print("f1 score:", f1_score)
         trial.report(eval_loss, step=epoch)
         logger.info(
             f"Epoch {epoch:03d} | "
@@ -176,7 +173,7 @@ def find_hyperparams(model_init_params, adata_train, adata_test, delta_config, h
     def optuna_objective(trial):
         min_lr = hyperparam_search_config["min_lr"]
         max_lr = hyperparam_search_config["max_lr"]
-        lr = trial.suggest_loguniform("lr", min_lr, max_lr)
+        lr = trial.suggest_float("lr", min_lr, max_lr, log=True)
         num_epochs = trial.suggest_categorical("epochs", hyperparam_search_config["epochs"])
         warm_up_percentage = trial.suggest_categorical("warm_up_percentage", hyperparam_search_config["warm_up_percentages"])
         if hyperparam_search_config.get("delta_params", None) is not None:
@@ -186,8 +183,7 @@ def find_hyperparams(model_init_params, adata_train, adata_test, delta_config, h
             delta_param = -1
 
         delta_method = delta_config["delta_method"]
-        logger.info(f"Trial {trial.number}: lr: {lr}, delta_param: {delta_param}, num_epochs: {num_epochs}, \
-                      warm_up_percentage: {warm_up_percentage}, delta_method: {delta_method}")
+        logger.info(f"Trial {trial.number}: lr: {lr}, delta_param: {delta_param}, num_epochs: {num_epochs}, warm_up_percentage: {warm_up_percentage}, delta_method: {delta_method}")
 
         wandb_config["lr"] = lr
         wandb_config["num_epochs"] = num_epochs
@@ -217,27 +213,29 @@ def run_optuna_hyperparam_search(model_init_params, adata_train, adata_test, del
         optuna.logging.set_verbosity(optuna.logging.INFO)
         logger = optuna.logging.get_logger("optuna")
         optuna.logging.disable_default_handler()
+        logger.setLevel(logging.INFO)
 
         # Prevent double logging
-        if not logger.hasHandlers():
-            file_handler = logging.FileHandler(log_path)
-            formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
-            file_handler.setFormatter(formatter)
-            logger.addHandler(file_handler)
+        #if not logger.hasHandlers():
+        file_handler = logging.FileHandler(log_path)
+        formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
         
         print("Running hyperparameter search...")
         study = optuna.create_study(direction="minimize")
-        hyperparam_search_config = json.loads(hyperparam_search_config_file)
+        with open(hyperparam_search_config_file, 'r') as f:
+            hyperparam_search_config = json.load(f)
         objective = find_hyperparams(model_init_params, adata_train, adata_test, delta_config,
                                      hyperparam_search_config, wandb_config, logger)
         n_trials = hyperparam_search_config["n_trials"]
         study.optimize(objective, n_trials=n_trials)
         best_trial = study.best_trial
-        print("Best trial:")
-        print("  Value: {}".format(best_trial.value))
-        print("  Params: ")
+        logger.info("Best trial:")
+        logger.info("  Value: {}".format(best_trial.value))
+        logger.info("  Params: ")
         for key, value in best_trial.params.items():
-            print("    {}: {}".format(key, value))
+            logger.info("    {}: {}".format(key, value))
         df = study.trials_dataframe()
 
         os.makedirs(HYPERPARAMS_SEARCH_DIR, exist_ok=True)
@@ -247,7 +245,6 @@ def run_optuna_hyperparam_search(model_init_params, adata_train, adata_test, del
 def train_model(args, adata_train, adata_test, cam, delta_config, wandb_config, warm_up_epochs=0):
     print(delta_config)
     add_delta_method.add_delta_method(cam, delta_config, wandb_config)
-    print(cam.model)
     if args.wandb:
         init_wandb(wandb_config)
         wandb.watch(cam.model, log="all", log_graph=True)
@@ -331,19 +328,22 @@ def main():
         "dataset": args.train_data,
     }
 
-    with open(args.delta_config_file, 'r') as f:
-        delta_config = json.load(f)
+    if not args.inference:
+        with open(args.delta_config_file, 'r') as f:
+            delta_config = json.load(f)
 
-    if args.hyperparam_search_config:
-        run_optuna_hyperparam_search(model_init_params, adata_train, adata_test, delta_config,
-                                     wandb_config, args.hyperparam_search_config, logging.getLogger())
+        if args.hyperparam_search_config:
+            run_optuna_hyperparam_search(model_init_params, adata_train, adata_test, delta_config,
+                                        wandb_config, args.hyperparam_search_config, logging.getLogger())
 
     else:
         cam = CellAnnotationModelWrapper(**model_init_params)
         if not args.inference:
             train_model(args, adata_train, adata_test, cam, delta_config, wandb_config, warm_up_epochs=args.warm_up_epochs)
+        else:
+            predictions_file = f"predictions/{model_name}_{args.train_data}.csv"
 
-        _, _, results = cam.test(adata_test)
+        _, _, results = cam.test(adata_test, predictions_file=predictions_file if args.inference else None)
         
         results_file = Path("results/" + model_name)
         if not results_file.exists():
