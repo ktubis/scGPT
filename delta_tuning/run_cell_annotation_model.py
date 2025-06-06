@@ -123,7 +123,7 @@ def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, warm_
     for epoch in range(1, num_epochs + 1):
         train_loader, valid_loader = cam._get_train_valid_data_per_epoch(split_data, gene_ids)
         epoch_loss = cam._train_step(train_loader, optimizer, scheduler, scaler, epoch)
-        eval_loss, _ = cam._evaluate(valid_loader, epoch)
+        eval_loss, _ = cam._evaluate(valid_loader)
         if eval_loss < best_eval_loss:
             best_eval_loss = eval_loss
         _, _, test_results = cam.test(adata_test)
