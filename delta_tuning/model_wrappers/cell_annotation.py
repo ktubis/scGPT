@@ -22,7 +22,6 @@ from scgpt.model import TransformerModel
 import scgpt
 import matplotlib.pyplot as plt
 
-
 INPUT_LAYER = "X_binned"
 MASK_RATIO = 0.0
 CLS = True
@@ -101,8 +100,7 @@ def move_optimizer_params_to_cuda(optimizer):
 class CellAnnotationModelWrapper():
 
     def __init__(self, model_path, pad_value, vocab, config_dict, num_batches, num_celltypes, max_seq_len, lr=LR, batch_size=BATCH_SIZE, eval_batch_size=BATCH_SIZE, log_dir="cell_annotation_logs/",
-                 mask_value=MASK_VALUE, mask_ratio=MASK_RATIO, model_name="awesome_model", log_wandb=False, schedule_interval=SCHEDULE_INTERVAL, schedule_ratio=SCHEDULE_RATIO,
-                 delta_method=None, delta_config=None):
+                 mask_value=MASK_VALUE, mask_ratio=MASK_RATIO, model_name="awesome_model", log_wandb=False, schedule_interval=SCHEDULE_INTERVAL, schedule_ratio=SCHEDULE_RATIO):
         
         self.model = TransformerModel(ntoken=len(vocab), 
                             num_batch_labels=num_batches,
