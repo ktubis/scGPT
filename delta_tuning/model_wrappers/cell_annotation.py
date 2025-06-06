@@ -13,6 +13,7 @@ from sklearn.model_selection import train_test_split
 import wandb
 from collections import namedtuple
 from transformers import get_linear_schedule_with_warmup
+import anndata as ad
 
 from arcitecture.transformer_wrapper import copy_original_model
 
@@ -247,7 +248,7 @@ class CellAnnotationModelWrapper():
         return train_loader, valid_loader
 
     
-    def _evaluate(self, loader: DataLoader, epoch=0, return_raw: bool = False) -> float:
+    def _evaluate(self, loader: DataLoader, return_raw: bool = False, return_embs=False) -> float:
         """
         Evaluate the model on the evaluation data.
         """
@@ -256,6 +257,7 @@ class CellAnnotationModelWrapper():
         total_error = 0.0
         total_num = 0
         predictions = []
+        embeddings = []
         with torch.no_grad():
             for batch_data in loader:
                 input_gene_ids = batch_data["gene_ids"].to(self.device)
@@ -271,6 +273,7 @@ class CellAnnotationModelWrapper():
                         CLS=True,
                     )
                     output_values = output_dict["cls_output"]
+                    cell_embeddings = output_dict["cell_emb"]
                     loss = self.criterion(output_values, celltype_labels)
 
                 total_loss += loss.item() * len(input_gene_ids)
@@ -279,15 +282,26 @@ class CellAnnotationModelWrapper():
                 total_num += len(input_gene_ids)
                 preds = output_values.argmax(1).cpu().numpy()
                 predictions.append(preds)
+                if return_embs:
+                    embeddings.append(cell_embeddings.cpu().numpy())
+
+        predictions = np.concatenate(predictions, axis=0)
+
+        if return_embs:
+            embeddings = np.concatenate(embeddings, axis=0)
+            if return_raw:
+                return predictions, embeddings
+            else:
+                return embeddings
 
         if return_raw:
-            return np.concatenate(predictions, axis=0)
+            return predictions
 
         return total_loss / total_num, total_error / total_num
 
 
 
-    def test(self, adata: DataLoader, eval_batch_size=EVAL_BATCH_SIZE, predictions_file=None) -> float:
+    def test(self, adata: DataLoader, eval_batch_size=EVAL_BATCH_SIZE, predictions_file=None, save_embeddings=False) -> float:
         all_counts = (
             adata.layers[INPUT_LAYER].A
             if issparse(adata.layers[INPUT_LAYER])
@@ -337,10 +351,17 @@ class CellAnnotationModelWrapper():
             pin_memory=True,
         )
 
-        predictions = self._evaluate(
-            loader=test_loader,
-            return_raw=True,
-        )
+        if save_embeddings:
+            predictions, cell_embeddings = self._evaluate(
+                loader=test_loader,
+                return_raw=True,
+                return_embs=True,
+            )
+        else:
+            predictions = self._evaluate(
+                loader=test_loader,
+                return_raw=True,
+            )
 
         # compute accuracy, precision, recall, f1
         accuracy = accuracy_score(celltypes_labels, predictions)
@@ -358,7 +379,12 @@ class CellAnnotationModelWrapper():
         if predictions_file is not None:
             predictions_df = adata.obs.copy()
             predictions_df["predicted_celltype_id"] = predictions
-            predictions_df.to_csv(predictions_file, index=True)
+            if save_embeddings:
+                predictions_adata = ad.AnnData(obs=predictions_df)
+                predictions_adata.obsm["X_emb"] = cell_embeddings
+                predictions_adata.write_h5ad(predictions_file + ".h5ad")
+            else:
+                predictions_df.to_csv(predictions_file + ".csv", index=True)
 
         return predictions, celltypes_labels, results
 

@@ -340,10 +340,15 @@ def main():
         cam = CellAnnotationModelWrapper(**model_init_params)
         if not args.inference:
             train_model(args, adata_train, adata_test, cam, delta_config, wandb_config, warm_up_epochs=args.warm_up_epochs)
+            test_kwargs = {}
         else:
-            predictions_file = f"predictions/{model_name}_{args.train_data}_{args.seed}.csv"
+            predictions_file = f"predictions/{model_name}_{args.train_data}_{args.seed}"
+            test_kwargs = {
+                "predictions_file": predictions_file if args.inference else None,
+                "save_embeddings": True,
+            }
 
-        _, _, results = cam.test(adata_test, predictions_file=predictions_file if args.inference else None)
+        _, _, results = cam.test(adata_test, **test_kwargs)
         print("Results:", results)
         
         results_file = Path("results/" + model_name)
