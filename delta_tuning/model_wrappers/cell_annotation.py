@@ -540,7 +540,7 @@ class CellAnnotationModelWrapper():
             if find_lr:
                 with open(LR_FINDER_LOG_DIR + self.model_name, 'a') as f:
                     f.write(f"{scheduler.get_last_lr()[0]} {epoch_loss}\n")
-            val_loss, val_err = self._evaluate(loader=valid_loader, epoch=epoch)
+            val_loss, val_err = self._evaluate(loader=valid_loader)
             _, _, test_results = self.test(adata_test, eval_batch_size=self.eval_batch_size)
 
             self.logger.info(
