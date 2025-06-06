@@ -22,7 +22,7 @@ def add_open_delta_model(cam_model, delta_model_config, wandb_config):
         delta_model = LoraModel(backbone_model=cam_model, lora_r=delta_model_config["delta_param"], modified_modules=modified_modules)
         wandb_config["delta_param"] = delta_model_config["delta_param"]
     cam_model.to("cuda")
-    delta_model.freeze_module(exclude=['deltas', 'cls_decoder'])
+    delta_model.freeze_module(exclude=['deltas', 'cls_decoder'], set_state_dict=False)
 
 
 def finetune_cls_decoder(cam: CellAnnotationModelWrapper):

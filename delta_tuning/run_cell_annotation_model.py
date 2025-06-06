@@ -302,6 +302,19 @@ def main():
     else:
         model_name = args.model_name + f"_{formatted_time}"
 
+    if not args.inference:
+        with open(args.delta_config_file, 'r') as f:
+            delta_config = json.load(f)
+
+    wandb_config = {
+        "learning_rate": args.lr,
+        "model_name": model_name,
+        "epochs": args.epochs,
+        "seed": args.seed,
+        "log_wandb": args.wandb,
+        "dataset": args.train_data,
+    }
+
     model_init_params = {
         "model_path": args.model,
         "max_seq_len": args.max_seq_len,
@@ -316,24 +329,13 @@ def main():
         "schedule_interval": args.schedule_interval,
         "schedule_ratio": args.schedule_ratio,
         "batch_size": args.batch_size,
-        "eval_batch_size": args.batch_size
+        "eval_batch_size": args.batch_size,
     }
-
-    wandb_config = {
-        "learning_rate": args.lr,
-        "model_name": model_name,
-        "epochs": args.epochs,
-        "seed": args.seed,
-        "log_wandb": args.wandb,
-        "dataset": args.train_data,
-    }
-
-    with open(args.delta_config_file, 'r') as f:
-        delta_config = json.load(f)
 
     if args.hyperparam_search_config:
+        assert not args.inference, "Hyperparameter search cannot be run in inference mode."
         run_optuna_hyperparam_search(model_init_params, adata_train, adata_test, delta_config,
-                                    wandb_config, args.hyperparam_search_config, logging.getLogger())
+                                     wandb_config, args.hyperparam_search_config, logging.getLogger())
     else:
         cam = CellAnnotationModelWrapper(**model_init_params)
         if not args.inference:
@@ -342,6 +344,7 @@ def main():
             predictions_file = f"predictions/{model_name}_{args.train_data}_{args.seed}.csv"
 
         _, _, results = cam.test(adata_test, predictions_file=predictions_file if args.inference else None)
+        print("Results:", results)
         
         results_file = Path("results/" + model_name)
         if not results_file.exists():
