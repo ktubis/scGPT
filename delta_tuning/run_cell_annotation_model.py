@@ -328,14 +328,12 @@ def main():
         "dataset": args.train_data,
     }
 
-    if not args.inference:
-        with open(args.delta_config_file, 'r') as f:
-            delta_config = json.load(f)
+    with open(args.delta_config_file, 'r') as f:
+        delta_config = json.load(f)
 
-        if args.hyperparam_search_config:
-            run_optuna_hyperparam_search(model_init_params, adata_train, adata_test, delta_config,
-                                        wandb_config, args.hyperparam_search_config, logging.getLogger())
-
+    if args.hyperparam_search_config:
+        run_optuna_hyperparam_search(model_init_params, adata_train, adata_test, delta_config,
+                                    wandb_config, args.hyperparam_search_config, logging.getLogger())
     else:
         cam = CellAnnotationModelWrapper(**model_init_params)
         if not args.inference:
