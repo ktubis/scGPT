@@ -80,7 +80,18 @@ class MultiheadAttentionDeconstructed(nn.MultiheadAttention):
         which are used instead of the original self.in_proj_weight and self.in_proj_bias.
         """
 
-        in_proj_weight = torch.cat([self.Q.weight, self.K.weight, self.V.weight], dim=0)
+        Q_weights = self.Q.weight
+        K_weights = self.K.weight
+        V_weights = self.V.weight
+
+        if hasattr(self.Q, "lora"):
+            Q_weights = Q_weights + self.Q.lora.lora_B @ self.Q.lora.lora_A
+        if hasattr(self.K, "lora"):
+            K_weights = K_weights + self.K.lora.lora_B @ self.K.lora.lora_A
+        if hasattr(self.V, "lora"):
+            V_weights = V_weights + self.V.lora.lora_B @ self.V.lora.lora_A
+
+        in_proj_weight = torch.cat([Q_weights, K_weights, V_weights], dim=0)
         in_proj_bias = torch.cat([self.Q.bias, self.K.bias, self.V.bias], dim=0)
 
         why_not_fast_path = ''
