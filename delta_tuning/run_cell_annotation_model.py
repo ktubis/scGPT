@@ -119,6 +119,7 @@ def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, warm_
     bad_epochs_counter = 0
     assert num_epochs > 0, "num_epochs must be greater than 0"
     best_eval_loss = np.inf
+    prev_eval_loss = np.inf
 
     for epoch in range(1, num_epochs + 1):
         train_loader, valid_loader = cam._get_train_valid_data_per_epoch(split_data, gene_ids)
@@ -126,6 +127,9 @@ def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, warm_
         eval_loss, _ = cam._evaluate(valid_loader)
         if eval_loss < best_eval_loss:
             best_eval_loss = eval_loss
+        if eval_loss > prev_eval_loss:
+            bad_epochs_counter += 1
+        prev_eval_loss = eval_loss
         _, _, test_results = cam.test(adata_test)
         f1_score = test_results["test/macro_f1"]
         trial.report(eval_loss, step=epoch)
@@ -155,7 +159,8 @@ def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, warm_
             logger.info(f"Early stopping at epoch {epoch} due to no improvement in eval loss, with best eval loss: {best_eval_loss}")
             return best_eval_loss
 
-        if trial.should_prune():
+        is_in_warmup_phase = epoch <= warm_up_percentage * num_epochs / 100
+        if not is_in_warmup_phase and trial.should_prune():
             logger.info(f"Trial {trial.number} pruned at epoch {epoch} with eval loss: {eval_loss:.4f}")
             raise optuna.exceptions.TrialPruned()
 
