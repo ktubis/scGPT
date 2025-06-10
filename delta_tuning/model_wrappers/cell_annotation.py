@@ -502,7 +502,7 @@ class CellAnnotationModelWrapper():
         return split_data, gene_ids
 
 
-    def train(self, num_epochs, adata, seed, adata_test, find_lr=False, warm_up_epochs=0, early_stop=False):
+    def train(self, num_epochs, adata, seed, adata_test, find_lr=False, warm_up_percentage=0, early_stop=False):
 
         split_data, gene_ids = self._get_split_data(adata)
         best_val_loss = float("inf")
@@ -511,20 +511,19 @@ class CellAnnotationModelWrapper():
             self.model.parameters(), lr=self.lr, eps=self.eps
         )
         if find_lr:
-            assert warm_up_epochs == 0, "Warm up epochs are not supported in lr finding mode."
+            assert warm_up_percentage == 0, "Warm up epochs are not supported in lr finding mode."
             # If in the lr finding mode.
             scheduler = torch.optim.lr_scheduler.StepLR(
                 optimizer, FIND_LR_PERIOD, gamma=FIND_LR_GAMMA
             )
         else:
+            num_training_steps = num_epochs * np.ceil(len(split_data.train_data) / self.batch_size)
+            warm_up_steps = (warm_up_percentage / 100.) * num_training_steps
             scheduler = get_linear_schedule_with_warmup(
                 optimizer,
-                num_warmup_steps=warm_up_epochs * np.ceil(len(split_data.train_data) / self.batch_size),
+                num_warmup_steps=warm_up_steps,
                 num_training_steps=num_epochs * np.ceil(len(split_data.train_data) / self.batch_size),
             )
-            #scheduler = torch.optim.lr_scheduler.StepLR(
-            #    optimizer, self.schedule_interval, gamma=self.schedule_ratio
-            #)
         move_optimizer_params_to_cuda(optimizer)
         scaler = torch.cuda.amp.GradScaler(enabled=True)
 
