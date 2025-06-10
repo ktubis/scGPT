@@ -247,14 +247,14 @@ def run_optuna_hyperparam_search(model_init_params, adata_train, adata_test, del
         df.to_csv(f"{HYPERPARAMS_SEARCH_DIR}/{wandb_config['model_name']}.csv", index=False)
 
 
-def train_model(args, adata_train, adata_test, cam, delta_config, wandb_config, warm_up_epochs=0):
+def train_model(args, adata_train, adata_test, cam, delta_config, wandb_config, warm_up_percentage=0):
     print(delta_config)
     add_delta_method.add_delta_method(cam, delta_config, wandb_config)
     if args.wandb:
         init_wandb(wandb_config)
         wandb.watch(cam.model, log="all", log_graph=True)
     cam.train(args.epochs, adata_train, args.seed, adata_test=adata_test, find_lr=args.find_lr,
-              warm_up_epochs=warm_up_epochs, early_stop=args.early_stop)
+              warm_up_percentage=warm_up_percentage, early_stop=args.early_stop)
 
 
 def main():
@@ -276,7 +276,7 @@ def main():
     parser.add_argument("--schedule_ratio", type=float, default=0.9, help="The ratio of the learning rate to schedule.")
     parser.add_argument("--hyperparam_search_config", default=None, help="The configuration from which to do hyperparameter search.")
     parser.add_argument("--batch_size", type=int, default=32, help="The batch size to use for training.")
-    parser.add_argument("--warm_up_epochs", type=int, default=0, help="The number of warm up epochs to use for training.")
+    parser.add_argument("--warm_up_percentage", type=int, default=0, help="The percentage of epochs to dedicate to the warm up.")
     parser.add_argument("--early_stop", action='store_true', help="Whether to use early stopping.")
     args = parser.parse_args()
 
@@ -344,7 +344,7 @@ def main():
     else:
         cam = CellAnnotationModelWrapper(**model_init_params)
         if not args.inference:
-            train_model(args, adata_train, adata_test, cam, delta_config, wandb_config, warm_up_epochs=args.warm_up_epochs)
+            train_model(args, adata_train, adata_test, cam, delta_config, wandb_config, warm_up_percentage=args.warm_up_percentage)
             test_kwargs = {}
         else:
             predictions_file = f"predictions/{model_name}_{args.train_data}_{args.seed}"
