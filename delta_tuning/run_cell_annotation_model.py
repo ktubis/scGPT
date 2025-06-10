@@ -253,7 +253,22 @@ def train_model(args, adata_train, adata_test, cam, delta_config, wandb_config, 
     if args.wandb:
         init_wandb(wandb_config)
         wandb.watch(cam.model, log="all", log_graph=True)
-    cam.train(args.epochs, adata_train, args.seed, adata_test=adata_test, find_lr=args.find_lr,
+    
+    # If those hyperparams are specified in the training config, use them, otherwise use the args
+    if delta_config.get("lr", None) is not None:
+        lr = delta_config["lr"]
+    else:
+        lr = args.lr
+    if delta_config.get("epochs", None) is not None:
+        epochs = delta_config["epochs"]
+    else:
+        epochs = args.epochs
+    if delta_config.get("warm_up_percentage", None) is not None:
+        warm_up_percentage = delta_config["warm_up_percentage"]
+    else:
+        warm_up_percentage = args.warm_up_percentage
+    
+    cam.train(lr, epochs, adata_train, args.seed, adata_test=adata_test, find_lr=args.find_lr,
               warm_up_percentage=warm_up_percentage, early_stop=args.early_stop)
 
 
@@ -329,7 +344,6 @@ def main():
         "num_celltypes": num_celltypes,
         "num_batches": num_batches,
         "model_name": model_name,
-        "lr": args.lr,
         "log_wandb": args.wandb,
         "schedule_interval": args.schedule_interval,
         "schedule_ratio": args.schedule_ratio,
