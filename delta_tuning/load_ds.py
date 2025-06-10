@@ -10,7 +10,7 @@ from scipy.sparse import issparse
 
 
 class SupportedDatasets(Enum):
-    FILTERED_PANCREAS = "filtered_pancreas"
+    FILTERED_PANCREAS = "pc"
     MS = "ms"
     MYE = "mye"
     PANCREAS = "pancreas"
