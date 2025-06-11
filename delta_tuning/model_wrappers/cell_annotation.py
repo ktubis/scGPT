@@ -632,7 +632,7 @@ class CellAnnotationModelWrapper():
         for param in self.model.cls_decoder.parameters():
             param.requires_grad = True
 
-        trainable_params = sum(p.numel() for p in cam.model.parameters() if p.requires_grad) / sum(p.numel() for p in cam.model.parameters())
+        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad) / sum(p.numel() for p in self.model.parameters())
         self.logger.info(f"Trainable parameters: {trainable_params}")
 
 
