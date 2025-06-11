@@ -102,10 +102,10 @@ def add_tokens_to_vocab(pad_token, vocab):
             vocab.append_token(s)
 
 
-def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, warm_up_percentage, batch_size, logger):
+def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, lr, warm_up_percentage, batch_size, logger):
     split_data, gene_ids = cam._get_split_data(adata_train)
     optimizer = torch.optim.Adam(
-        cam.model.parameters(), lr=cam.lr, eps=cam.eps
+        cam.model.parameters(), lr=lr, eps=cam.eps
     )
     move_optimizer_params_to_cuda(optimizer)
     num_training_steps = num_epochs * np.ceil(len(split_data.train_data) / batch_size)
@@ -197,13 +197,13 @@ def find_hyperparams(model_init_params, adata_train, adata_test, delta_config, h
         init_wandb(wandb_config)
 
         # Update the model config with the hyperparameters and create model
-        model_init_params["lr"] = lr
+        # model_init_params["lr"] = lr
         cam = CellAnnotationModelWrapper(**model_init_params)
 
         add_delta_method.add_delta_method(cam, delta_config, wandb_config)
 
         wandb.watch(cam.model, log="all", log_graph=True)
-        return hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial,
+        return hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, lr=lr,
                                      warm_up_percentage=warm_up_percentage,
                                      batch_size=model_init_params["batch_size"],
                                      logger=logger)
