@@ -249,7 +249,6 @@ def run_optuna_hyperparam_search(model_init_params, adata_train, adata_test, del
 
 def train_model(args, adata_train, adata_test, cam, delta_config, wandb_config, warm_up_percentage=0):
     print(delta_config)
-    add_delta_method.add_delta_method(cam, delta_config, wandb_config)
     if args.wandb:
         init_wandb(wandb_config)
         wandb.watch(cam.model, log="all", log_graph=True)
@@ -322,9 +321,8 @@ def main():
     else:
         model_name = args.model_name + f"_{formatted_time}"
 
-    if not args.inference:
-        with open(args.delta_config_file, 'r') as f:
-            delta_config = json.load(f)
+    with open(args.delta_config_file, 'r') as f:
+        delta_config = json.load(f)
 
     wandb_config = {
         "learning_rate": args.lr,
@@ -357,6 +355,7 @@ def main():
                                      wandb_config, args.hyperparam_search_config, logging.getLogger())
     else:
         cam = CellAnnotationModelWrapper(**model_init_params)
+        add_delta_method.add_delta_method(cam, delta_config, wandb_config)
         if not args.inference:
             train_model(args, adata_train, adata_test, cam, delta_config, wandb_config, warm_up_percentage=args.warm_up_percentage)
             test_kwargs = {}
