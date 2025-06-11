@@ -16,6 +16,7 @@ from transformers import get_linear_schedule_with_warmup
 import anndata as ad
 
 from arcitecture.transformer_wrapper import copy_original_model
+from OpenDelta.opendelta import AdapterModel, LoraModel
 
 sys.path.insert(0, "../")
 from scgpt.tokenizer import tokenize_and_pad_batch, random_mask_value
@@ -100,8 +101,8 @@ def move_optimizer_params_to_cuda(optimizer):
 
 class CellAnnotationModelWrapper():
 
-    def __init__(self, model_path, pad_value, vocab, config_dict, num_batches, num_celltypes, max_seq_len, batch_size=BATCH_SIZE, eval_batch_size=BATCH_SIZE, log_dir="cell_annotation_logs/",
-                 mask_value=MASK_VALUE, mask_ratio=MASK_RATIO, model_name="awesome_model", log_wandb=False, schedule_interval=SCHEDULE_INTERVAL, schedule_ratio=SCHEDULE_RATIO):
+    def __init__(self, model_path, pad_value, vocab, config_dict, num_batches, num_celltypes, max_seq_len, delta_config, batch_size=BATCH_SIZE, eval_batch_size=BATCH_SIZE, log_dir="cell_annotation_logs/",
+                 mask_value=MASK_VALUE, mask_ratio=MASK_RATIO, model_name="awesome_model", log_wandb=False, schedule_interval=SCHEDULE_INTERVAL, schedule_ratio=SCHEDULE_RATIO, wandb_config=None):
         
         self.model = TransformerModel(ntoken=len(vocab), 
                             num_batch_labels=num_batches,
@@ -110,7 +111,7 @@ class CellAnnotationModelWrapper():
                             seq_len=max_seq_len,
                             train_batch_size=batch_size,
                             **config_dict)
-                
+        self.add_delta_method(delta_config, wandb_config)
         if model_path is not None:
             self.load_model(model_path)
 
@@ -599,3 +600,93 @@ class CellAnnotationModelWrapper():
                 )
 
             #scheduler.step()
+
+    def add_open_delta_model(self, delta_model_config, wandb_config):
+        if delta_model_config["delta_method"] == "adapter":
+            if "modified_modules" in delta_model_config:
+                modified_modules = delta_model_config["modified_modules"]
+            else:
+                modified_modules = []
+                for i in range(self.model.nlayers):
+                    modified_modules.append(f"transformer_encoder.layers.{i}.linear2")
+            delta_model = AdapterModel(backbone_model=self.model, bottleneck_dim=delta_model_config["delta_param"],
+                                    modified_modules=modified_modules)
+            wandb_config["delta_param"] = delta_model_config["delta_param"]
+        if delta_model_config["delta_method"] == "lora":
+            modified_modules = []
+            for i in range(self.model.nlayers):
+                modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.Q")
+                modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.V")
+            delta_model = LoraModel(backbone_model=self.model, lora_r=delta_model_config["delta_param"], modified_modules=modified_modules)
+            wandb_config["delta_param"] = delta_model_config["delta_param"]
+        self.model.to("cuda")
+        delta_model.freeze_module(exclude=['deltas', 'cls_decoder'], set_state_dict=False)
+        self.model.print_trainable_parameters()
+
+
+    def finetune_cls_decoder(self):
+        for param in self.model.parameters():
+            param.requires_grad = False
+        
+        for param in self.model.cls_decoder.parameters():
+            param.requires_grad = True
+
+        trainable_params = sum(p.numel() for p in cam.model.parameters() if p.requires_grad) / sum(p.numel() for p in cam.model.parameters())
+        self.logger.info(f"Trainable parameters: {trainable_params}")
+
+
+    def train_transformer_modules(self, delta_model_config: dict, wandb_config: dict):
+        """
+        Freeze all of the modules except the specified transformer modules in the config.
+        """
+        # train_modules: list, sublayers: list = None
+        self.finetune_cls_decoder()  # make sure cls decoder is trainable
+        if not delta_model_config.get("train_modules", None):
+            raise ValueError("train_modules must be specified in the delta model config for 'specify_transformer_layers' delta type.")
+        
+        train_modules = delta_model_config["train_modules"]
+        sublayers = delta_model_config.get("sublayers", None)
+        wandb_config["train_modules"] = train_modules
+        wandb_config["sublayers"] = sublayers if sublayers is not None else []
+
+        modules_to_train = ["transformer_encoder.layers." + str(i) for i in train_modules]
+        if sublayers is not None:
+            modules_to_train = [f"{module}.{sublayer}" for module in modules_to_train for sublayer in sublayers]
+
+        for name, module in self.model.named_modules():
+            if name.startswith(tuple(modules_to_train)):
+                for param in module.parameters():
+                    param.requires_grad = True
+                self.logger.info(f"Un-freezing module {name}")
+
+        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad) / sum(p.numel() for p in self.model.parameters())
+        self.logger.info(f"Trainable parameters after unfreezing transformers: {trainable_params}")
+
+
+    def add_delta_method(self, delta_model_config: dict, wandb_config: dict):
+        """
+        Add the delta method to the model.
+        :param cam: CellAnnotationModelWrapper
+        :param model_config: model configuration
+        :param wandb_config: wandb configuration
+        """
+        SUPPORTED_DELTA_TYPES = ["all_weights", "classifier", "specify_transformer_layers", "adapter", "lora"]
+        delta_method = delta_model_config["delta_method"]
+        
+        if delta_method == "all_weights":
+            # nothing to do, all weights are trainable
+            print("Delta type is 'all_weights', no additional configuration needed.")
+            pass
+        elif delta_method == "classifier":
+            print("Delta type is 'classifier', finetuning the classifier decoder.")
+            self.finetune_cls_decoder()
+        elif delta_method == "specify_transformer_layers":
+            print("Delta type is 'specify_transformer_layers', training specified transformer modules.")
+            self.train_transformer_modules(delta_model_config, wandb_config)
+        elif delta_method == "adapter" or delta_method == "lora":
+            print(f"Delta type is '{delta_method}', adding OpenDelta model.")
+            self.add_open_delta_model(delta_model_config, wandb_config)
+        else:
+            raise ValueError(f"Unsupported delta type: {delta_method}. Supported types are: {SUPPORTED_DELTA_TYPES}")
+        
+        wandb_config["delta_method"] = delta_method

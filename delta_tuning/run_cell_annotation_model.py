@@ -18,10 +18,8 @@ from pathlib import Path
 from datetime import datetime
 import optuna
 import wandb
-from OpenDelta.opendelta import AdapterModel, SoftPromptModel, LoraModel
 from transformers import get_linear_schedule_with_warmup
 import logging
-import add_delta_method
 
 sys.path.insert(0, "../")
 from scgpt.model import TransformerModel
@@ -197,10 +195,11 @@ def find_hyperparams(model_init_params, adata_train, adata_test, delta_config, h
         init_wandb(wandb_config)
 
         # Update the model config with the hyperparameters and create model
-        # model_init_params["lr"] = lr
+        model_init_params["delta_config"] = delta_config
+        model_init_params["wandb_config"] = wandb_config
         cam = CellAnnotationModelWrapper(**model_init_params)
 
-        add_delta_method.add_delta_method(cam, delta_config, wandb_config)
+        #add_delta_method.add_delta_method(cam, delta_config, wandb_config)
 
         wandb.watch(cam.model, log="all", log_graph=True)
         return hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, lr=lr,
@@ -347,6 +346,8 @@ def main():
         "schedule_ratio": args.schedule_ratio,
         "batch_size": args.batch_size,
         "eval_batch_size": args.batch_size,
+        "delta_config": delta_config,
+        "wandb_config": wandb_config,
     }
 
     if args.hyperparam_search_config:
@@ -355,7 +356,7 @@ def main():
                                      wandb_config, args.hyperparam_search_config, logging.getLogger())
     else:
         cam = CellAnnotationModelWrapper(**model_init_params)
-        add_delta_method.add_delta_method(cam, delta_config, wandb_config)
+        #add_delta_method.add_delta_method(cam, delta_config, wandb_config)
         if not args.inference:
             train_model(args, adata_train, adata_test, cam, delta_config, wandb_config, warm_up_percentage=args.warm_up_percentage)
             test_kwargs = {}
