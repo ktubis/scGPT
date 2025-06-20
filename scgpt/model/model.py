@@ -11,6 +11,7 @@ from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from torch.distributions import Bernoulli
 from tqdm import trange
 import json
+from torch.nn.modules import MultiheadAttention
 
 from delta_tuning.arcitecture.transformer_wrapper import CustomTransformerEncoderLayer, MultiheadAttentionDeconstructed
 
@@ -138,9 +139,9 @@ class TransformerModel(nn.Module):
 
         self.init_weights()
         self.dummy_inputs = {
-            'input_ids': torch.randint(0, 16000, (self.batch_size, self.seq_len)),
-            'inputs_embeds': torch.randint(0, 50, (self.batch_size, self.seq_len), dtype=torch.float),
-            'src_key_padding_mask': torch.zeros(self.batch_size, self.seq_len, dtype=torch.bool),
+            'input_ids': torch.randint(0, 16000, (self.batch_size, 100)),
+            'inputs_embeds': torch.randint(0, 50, (self.batch_size, 100), dtype=torch.float),
+            'src_key_padding_mask': torch.zeros(self.batch_size, 100, dtype=torch.bool),
             "CLS": True,
         }
 
