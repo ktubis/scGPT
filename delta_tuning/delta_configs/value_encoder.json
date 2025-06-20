@@ -1,0 +1,4 @@
+{
+    "delta_method": "custom_module",
+    "module": "value_encoder"
+}

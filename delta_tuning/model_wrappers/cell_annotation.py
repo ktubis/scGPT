@@ -636,6 +636,17 @@ class CellAnnotationModelWrapper():
         trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad) / sum(p.numel() for p in self.model.parameters())
         self.logger.info(f"Trainable parameters: {trainable_params}")
 
+    def finetune_custom_module(self, delta_model_config, wandb_config):
+        module_name = delta_model_config["module"]
+        print(module_name)
+        self.finetune_cls_decoder()
+        for param in getattr(self.model, module_name).parameters():
+            param.requires_grad = True
+        
+        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad) / sum(p.numel() for p in self.model.parameters())
+        self.logger.info(f"Trainable parameters: {trainable_params}")
+        wandb_config["trainable module"] = module_name
+
 
     def train_transformer_modules(self, delta_model_config: dict, wandb_config: dict):
         """
@@ -688,6 +699,9 @@ class CellAnnotationModelWrapper():
         elif delta_method == "adapter" or delta_method == "lora":
             print(f"Delta type is '{delta_method}', adding OpenDelta model.")
             self.add_open_delta_model(delta_model_config, wandb_config)
+        elif delta_method == "custom_module":
+            print("Delta type: custom_module, for module: ", delta_model_config["module"])
+            self.finetune_custom_module(delta_model_config, wandb_config)
         else:
             raise ValueError(f"Unsupported delta type: {delta_method}. Supported types are: {SUPPORTED_DELTA_TYPES}")
         
