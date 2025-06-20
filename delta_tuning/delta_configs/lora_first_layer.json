@@ -1,0 +1,8 @@
+{
+    "delta_method": "lora",
+    "delta_param": 12,
+    "modified_modules": [
+        "transformer_encoder.layers.0.self_attn.Q",
+        "transformer_encoder.layers.0.self_attn.V"
+    ]
+}
