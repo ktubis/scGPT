@@ -36,8 +36,8 @@ BATCH_SIZE = 32
 EVAL_BATCH_SIZE = 64
 LOG_INTERVAL = 100
 RETRAINED_MODELS_DIR = "retrained_models/"
-EARLY_STOPPING_EPOCHS_AVG = 10
-EARLY_STOPPING_PATIENCE = 3
+EARLY_STOPPING_EPOCHS_AVG = 3
+EARLY_STOPPING_PATIENCE = 10
 LR_FINDER_LOG_DIR = "cell_annotation_logs/lr_finder/"
 FIND_LR_PERIOD = 600
 FIND_LR_GAMMA = 3
@@ -599,7 +599,6 @@ class CellAnnotationModelWrapper():
                 )
 
             #scheduler.step()
-
 
     def add_open_delta_model(self, delta_model_config, wandb_config):
         if delta_model_config["delta_method"] == "adapter":
