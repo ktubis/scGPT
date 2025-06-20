@@ -613,10 +613,13 @@ class CellAnnotationModelWrapper():
                                     modified_modules=modified_modules)
             wandb_config["delta_param"] = delta_model_config["delta_param"]
         if delta_model_config["delta_method"] == "lora":
-            modified_modules = []
-            for i in range(self.model.nlayers):
-                modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.Q")
-                modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.V")
+            if "modified_modules" in delta_model_config:
+                modified_modules = delta_model_config["modified_modules"]
+            else:
+                modified_modules = []
+                for i in range(self.model.nlayers):
+                    modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.Q")
+                    modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.V")
             delta_model = LoraModel(backbone_model=self.model, lora_r=delta_model_config["delta_param"], modified_modules=modified_modules)
             wandb_config["delta_param"] = delta_model_config["delta_param"]
         self.model.to("cuda")
