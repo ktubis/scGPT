@@ -1,0 +1,8 @@
+{
+    "min_lr": 3e-5,
+    "max_lr": 3e-4,
+    "delta_params": [6, 12, 24, 64],
+    "epochs": [10, 25, 50, 100],
+    "warm_up_percentages": [0, 10, 25],
+    "n_trials": 75
+}
