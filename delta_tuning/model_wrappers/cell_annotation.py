@@ -623,7 +623,6 @@ class CellAnnotationModelWrapper():
             wandb_config["delta_param"] = delta_model_config["delta_param"]
         self.model.to("cuda")
         delta_model.freeze_module(exclude=['deltas', 'cls_decoder'], set_state_dict=False)
-        self.model.print_trainable_parameters()
 
 
     def finetune_cls_decoder(self):
@@ -633,8 +632,6 @@ class CellAnnotationModelWrapper():
         for param in self.model.cls_decoder.parameters():
             param.requires_grad = True
 
-        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad) / sum(p.numel() for p in self.model.parameters())
-        self.logger.info(f"Trainable parameters: {trainable_params}")
 
     def finetune_custom_module(self, delta_model_config, wandb_config):
         module_name = delta_model_config["module"]
@@ -643,8 +640,6 @@ class CellAnnotationModelWrapper():
         for param in getattr(self.model, module_name).parameters():
             param.requires_grad = True
         
-        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad) / sum(p.numel() for p in self.model.parameters())
-        self.logger.info(f"Trainable parameters: {trainable_params}")
         wandb_config["trainable module"] = module_name
 
 
@@ -672,7 +667,6 @@ class CellAnnotationModelWrapper():
                     param.requires_grad = True
                 self.logger.info(f"Un-freezing module {name}")
 
-        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad) / sum(p.numel() for p in self.model.parameters())
         self.logger.info(f"Trainable parameters after unfreezing transformers: {trainable_params}")
 
 
@@ -705,4 +699,5 @@ class CellAnnotationModelWrapper():
         else:
             raise ValueError(f"Unsupported delta type: {delta_method}. Supported types are: {SUPPORTED_DELTA_TYPES}")
         
+        self.model.print_trainable_parameters()
         wandb_config["delta_method"] = delta_method
