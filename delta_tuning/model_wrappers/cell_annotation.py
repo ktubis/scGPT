@@ -368,7 +368,7 @@ class CellAnnotationModelWrapper():
                 return_raw=True,
                 get_intermediate_outputs=True,
             )
-            embeddings_adata = ad.AnnData(obs=predictions_df)
+            embeddings_adata = ad.AnnData(obs=adata.obs.copy())
             for i in range(len(cell_embeddings)):
                 embeddings_adata.obsm[f"transformer_layer_${i}"] = cell_embeddings[i]
             embeddings_adata.write_h5ad(predictions_file + ".h5ad")
