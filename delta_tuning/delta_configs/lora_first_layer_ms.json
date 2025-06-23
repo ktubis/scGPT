@@ -1,0 +1,11 @@
+{
+    "delta_method": "lora",
+    "delta_param": 6,
+    "modified_modules": [
+        "transformer_encoder.layers.0.self_attn.Q",
+        "transformer_encoder.layers.0.self_attn.V"
+    ],
+    "lr": 3e-4,
+    "epochs": 25,
+    "warm_up_percentage": 25
+}
