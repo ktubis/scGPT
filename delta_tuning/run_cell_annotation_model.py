@@ -304,10 +304,8 @@ def main():
     vocab = GeneVocab.from_file(VOCAB_PATH)
     vocab = GeneVocab.from_file(VOCAB_PATH)
     add_tokens_to_vocab(config_dict["pad_token"], vocab)
-    print("train data:", args.train_data in supported_datasets)
     ds_loader = load_ds.get_data_loader(args.train_data)
     adata_train, adata_test = get_data_loaders(ds_loader, vocab, config_dict, args.test_data)
-
     num_celltypes = ds_loader.get_num_celltypes()
     num_batches = ds_loader.get_num_batches()
 
