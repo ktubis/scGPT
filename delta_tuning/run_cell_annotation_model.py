@@ -368,7 +368,7 @@ def main():
             }
 
         if args.get_intermediate_outputs:
-            predictions_file = f"intermediate_embeddings/{model_name}_{args.train_data}
+            predictions_file = f"intermediate_embeddings/{model_name}_{args.train_data}"
             cam.test(adata_test, predictions_file=predictions_file, get_intermediate_outputs=True)
             return
 
