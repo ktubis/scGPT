@@ -293,6 +293,8 @@ def main():
     parser.add_argument("--early_stop", action='store_true', help="Whether to use early stopping.")
     parser.add_argument("--get_intermediate_outputs", action='store_true', help="Whether to output the cell embeddings from" \
                         "intermediate transformer layers.")
+    parser.add_argument("--num_layers", type=int, help="The number of layers in the model." \
+                        "Overrides the number of layers specified in the config.")
     args = parser.parse_args()
 
     supported_datasets = [ds.value for ds in load_ds.SupportedDatasets]
@@ -331,6 +333,9 @@ def main():
         "log_wandb": args.wandb,
         "dataset": args.train_data,
     }
+
+    if args.num_layers:
+        config_dict["nlayers"] = args.num_layers
 
     model_init_params = {
         "model_path": args.model,
