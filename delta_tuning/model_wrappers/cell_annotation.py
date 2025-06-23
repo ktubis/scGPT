@@ -293,6 +293,8 @@ class CellAnnotationModelWrapper():
                         embeddings.append(cell_embeddings.cpu().numpy())
 
         if get_intermediate_outputs:
+            for i in range(len(intermediate_embeddings)):
+                intermediate_embeddings[i] = np.concatenate(intermediate_embeddings[i], axis=0)
             return intermediate_embeddings
 
         predictions = np.concatenate(predictions, axis=0)
