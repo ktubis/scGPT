@@ -291,6 +291,8 @@ def main():
     parser.add_argument("--batch_size", type=int, default=32, help="The batch size to use for training.")
     parser.add_argument("--warm_up_percentage", type=int, default=0, help="The percentage of epochs to dedicate to the warm up.")
     parser.add_argument("--early_stop", action='store_true', help="Whether to use early stopping.")
+    parser.add_argument("--get_intermediate_outputs", action='store_true', help="Whether to output the cell embeddings from" \
+                        "intermediate transformer layers.")
     args = parser.parse_args()
 
     supported_datasets = [ds.value for ds in load_ds.SupportedDatasets]
@@ -364,6 +366,11 @@ def main():
                 "predictions_file": predictions_file if args.inference else None,
                 "save_embeddings": True,
             }
+
+        if args.get_intermediate_outputs:
+            predictions_file = f"intermediate_embeddings/{model_name}_{args.train_data}
+            cam.test(adata_test, predictions_file=predictions_file, get_intermediate_outputs=True)
+            return
 
         _, _, results = cam.test(adata_test, **test_kwargs)
         print("Results:", results)

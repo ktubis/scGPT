@@ -161,6 +161,7 @@ class TransformerModel(nn.Module):
         src_key_padding_mask: Tensor,
         batch_labels: Optional[Tensor] = None,  # (batch,)
         inputs_embeds_after_encoder: Optional[Tensor] = None,
+        get_intermediate_outputs = False
     ) -> Tensor:
         self._check_batch_labels(batch_labels)
 
@@ -200,9 +201,17 @@ class TransformerModel(nn.Module):
         elif getattr(self, "bn", None) is not None:
             total_embs = self.bn(total_embs.permute(0, 2, 1)).permute(0, 2, 1)
 
-        output = self.transformer_encoder(
-            total_embs, src_key_padding_mask=src_key_padding_mask
-        )
+        if get_intermediate_outputs:
+            outputs = []
+            for i, layer in enumerate(self.transformer_encoder.layers):
+                total_embs = layer(total_embs)
+                outputs.append(total_embs.copy())
+            return outputs
+        else:
+            output = self.transformer_encoder(
+                total_embs, src_key_padding_mask=src_key_padding_mask
+            )
+
         return output  # (batch, seq_len, embsize)
 
     def _get_cell_emb_from_layer(
@@ -333,6 +342,7 @@ class TransformerModel(nn.Module):
         do_sample: bool = False,
         attention_mask = None,
         inputs_embeds_after_encoder: Optional[Tensor] = None,
+        get_intermediate_outputs=False
     ) -> Mapping[str, Tensor]:
         """
         Args:
@@ -354,8 +364,19 @@ class TransformerModel(nn.Module):
             dict of output Tensors.
         """
         transformer_output = self._encode(
-            input_ids, inputs_embeds, src_key_padding_mask, batch_labels, inputs_embeds_after_encoder
+            input_ids, inputs_embeds, src_key_padding_mask, batch_labels, inputs_embeds_after_encoder,
+            get_intermediate_outputs
         )
+        if get_intermediate_outputs:
+            # in case get_intermediate_outputs, self_encode returns the intermediate outputs of all the
+            # transformer layers in the form of a list, so if there are 12 transformer layers the list
+            # will be of length 12.
+            intermediate_outputs = transformer_output
+            cell_embeds = []
+            for output in intermediate_outputs:
+                cell_embeds.append(self._get_cell_emb_from_layer(output, inputs_embeds))
+            return cell_embeds
+        
         if self.use_batch_labels:
             batch_emb = self.batch_encoder(batch_labels)  # (batch, embsize)
 

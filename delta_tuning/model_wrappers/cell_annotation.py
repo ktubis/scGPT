@@ -247,7 +247,8 @@ class CellAnnotationModelWrapper():
         return train_loader, valid_loader
 
     
-    def _evaluate(self, loader: DataLoader, return_raw: bool = False, return_embs=False) -> float:
+    def _evaluate(self, loader: DataLoader, return_raw: bool = False, return_embs=False,
+                  get_intermediate_outputs=False) -> float:
         """
         Evaluate the model on the evaluation data.
         """
@@ -257,6 +258,7 @@ class CellAnnotationModelWrapper():
         total_num = 0
         predictions = []
         embeddings = []
+        intermediate_embeddings = [] * self.model.nlayers
         with torch.no_grad():
             for batch_data in loader:
                 input_gene_ids = batch_data["gene_ids"].to(self.device)
@@ -265,24 +267,33 @@ class CellAnnotationModelWrapper():
 
                 src_key_padding_mask = input_gene_ids.eq(self.vocab[self.pad_token])
                 with torch.cuda.amp.autocast(enabled=True):
-                    output_dict = self.model(
+                    output = self.model(
                         input_ids=input_gene_ids,
                         inputs_embeds=input_values,
                         src_key_padding_mask=src_key_padding_mask,
                         CLS=True,
+                        get_intermediate_outputs=get_intermediate_outputs,
                     )
-                    output_values = output_dict["cls_output"]
-                    cell_embeddings = output_dict["cell_emb"]
-                    loss = self.criterion(output_values, celltype_labels)
+                    if not get_intermediate_outputs:
+                        output_values = output["cls_output"]
+                        cell_embeddings = output["cell_emb"]
+                        loss = self.criterion(output_values, celltype_labels)
 
-                total_loss += loss.item() * len(input_gene_ids)
-                accuracy = (output_values.argmax(1) == celltype_labels).sum().item()
-                total_error += (1 - accuracy / len(input_gene_ids)) * len(input_gene_ids)
-                total_num += len(input_gene_ids)
-                preds = output_values.argmax(1).cpu().numpy()
-                predictions.append(preds)
-                if return_embs:
-                    embeddings.append(cell_embeddings.cpu().numpy())
+                if get_intermediate_outputs:
+                    for i in self.model.nlayers:
+                        intermediate_embeddings[i].append(output[i].cpu().numpy())
+                else:
+                    total_loss += loss.item() * len(input_gene_ids)
+                    accuracy = (output_values.argmax(1) == celltype_labels).sum().item()
+                    total_error += (1 - accuracy / len(input_gene_ids)) * len(input_gene_ids)
+                    total_num += len(input_gene_ids)
+                    preds = output_values.argmax(1).cpu().numpy()
+                    predictions.append(preds)
+                    if return_embs:
+                        embeddings.append(cell_embeddings.cpu().numpy())
+
+        if get_intermediate_outputs:
+            return intermediate_embeddings
 
         predictions = np.concatenate(predictions, axis=0)
 
@@ -300,7 +311,8 @@ class CellAnnotationModelWrapper():
 
 
 
-    def test(self, adata: DataLoader, eval_batch_size=EVAL_BATCH_SIZE, predictions_file=None, save_embeddings=False) -> float:
+    def test(self, adata: DataLoader, eval_batch_size=EVAL_BATCH_SIZE, predictions_file=None, save_embeddings=False,
+             get_intermediate_outputs=False) -> float:
         all_counts = (
             adata.layers[INPUT_LAYER].A
             if issparse(adata.layers[INPUT_LAYER])
@@ -349,6 +361,18 @@ class CellAnnotationModelWrapper():
             num_workers=min(len(os.sched_getaffinity(0)), eval_batch_size // 2),
             pin_memory=True,
         )
+
+        if get_intermediate_outputs:
+            cell_embeddings = self._evaluate(
+                loader=test_loader,
+                return_raw=True,
+                get_intermediate_outputs=True,
+            )
+            embeddings_adata = ad.AnnData(obs=predictions_df)
+            for i in range(len(cell_embeddings)):
+                embeddings_adata.obsm[f"transformer_layer_${i}"] = cell_embeddings[i]
+            embeddings_adata.write_h5ad(predictions_file + ".h5ad")
+            return
 
         if save_embeddings:
             predictions, cell_embeddings = self._evaluate(
