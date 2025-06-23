@@ -56,7 +56,7 @@ def init_wandb(wandb_config):
         project="cell_annotation",
         reinit=True,
         settings=wandb.Settings(start_method="fork"),
-        mode='offline',
+        mode='online',
         name=wandb_config["model_name"],
     )
 
