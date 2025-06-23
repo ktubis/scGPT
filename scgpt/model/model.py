@@ -205,7 +205,7 @@ class TransformerModel(nn.Module):
             outputs = []
             for i, layer in enumerate(self.transformer_encoder.layers):
                 total_embs = layer(total_embs)
-                outputs.append(total_embs.copy())
+                outputs.append(total_embs.clone().detach())
             return outputs
         else:
             output = self.transformer_encoder(
