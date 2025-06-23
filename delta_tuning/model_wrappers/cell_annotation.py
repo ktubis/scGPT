@@ -258,7 +258,7 @@ class CellAnnotationModelWrapper():
         total_num = 0
         predictions = []
         embeddings = []
-        intermediate_embeddings = [[]] * self.model.nlayers
+        intermediate_embeddings = [[] for _ in range(self.model.nlayers)]
         with torch.no_grad():
             for batch_data in loader:
                 input_gene_ids = batch_data["gene_ids"].to(self.device)
