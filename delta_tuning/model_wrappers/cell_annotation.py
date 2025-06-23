@@ -280,7 +280,7 @@ class CellAnnotationModelWrapper():
                         loss = self.criterion(output_values, celltype_labels)
 
                 if get_intermediate_outputs:
-                    for i in self.model.nlayers:
+                    for i in range(self.model.nlayers):
                         intermediate_embeddings[i].append(output[i].cpu().numpy())
                 else:
                     total_loss += loss.item() * len(input_gene_ids)
