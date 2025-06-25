@@ -621,7 +621,7 @@ class CellAnnotationModelWrapper():
                         "val_loss": val_loss,
                         "f1_score": test_results["test/macro_f1"],
                         "epoch": epoch,
-                        "lr": lr
+                        "lr": scheduler.get_last_lr()[0],
                     }
                 )
 
