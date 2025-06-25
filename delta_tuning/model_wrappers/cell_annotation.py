@@ -619,8 +619,9 @@ class CellAnnotationModelWrapper():
                         "train_loss": epoch_loss,
                         "best_val_loss": best_val_loss,
                         "val_loss": val_loss,
-                        "test_loss": test_results["test/macro_f1"],
+                        "f1_score": test_results["test/macro_f1"],
                         "epoch": epoch,
+                        "lr": lr
                     }
                 )
 

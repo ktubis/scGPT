@@ -295,6 +295,8 @@ def main():
                         "intermediate transformer layers.")
     parser.add_argument("--num_layers", type=int, help="The number of layers in the model." \
                         "Overrides the number of layers specified in the config.")
+    parser.add_argument("--nlayers_cls", type=int, help="The number of layers in the cls classifier."\
+                        "Overrides the number of layers specified in the config.")
     args = parser.parse_args()
 
     supported_datasets = [ds.value for ds in load_ds.SupportedDatasets]
@@ -336,6 +338,9 @@ def main():
 
     if args.num_layers:
         config_dict["nlayers"] = args.num_layers
+
+    if args.nlayers_cls:
+        config_dict["nlayers_cls"] = args.num_layers
 
     model_init_params = {
         "model_path": args.model,
