@@ -36,8 +36,8 @@ BATCH_SIZE = 32
 EVAL_BATCH_SIZE = 64
 LOG_INTERVAL = 100
 RETRAINED_MODELS_DIR = "retrained_models/"
-EARLY_STOPPING_EPOCHS_AVG = 3
-EARLY_STOPPING_PATIENCE = 10
+EARLY_STOPPING_EPOCHS_AVG = 5
+EARLY_STOPPING_PATIENCE = 5
 LR_FINDER_LOG_DIR = "cell_annotation_logs/lr_finder/"
 FIND_LR_PERIOD = 600
 FIND_LR_GAMMA = 3
@@ -553,10 +553,10 @@ class CellAnnotationModelWrapper():
         scaler = torch.cuda.amp.GradScaler(enabled=True)
 
         # for early stopping
-        last_test_losses = np.zeros(EARLY_STOPPING_EPOCHS_AVG)
+        last_val_losses = np.zeros(EARLY_STOPPING_EPOCHS_AVG)
         early_stopping_counter = 0
         prev_epoch_loss = np.inf
-        curr_test_loss_avg = np.inf
+        curr_val_loss_avg = np.inf
         for epoch in range(1, num_epochs + 1):
             epoch_start_time = time.time()
             train_loader, valid_loader = self._get_train_valid_data_per_epoch(split_data, gene_ids)
@@ -580,19 +580,19 @@ class CellAnnotationModelWrapper():
             self.logger.info("-" * 89)
 
             # Early stopping mechanism
-            prev_test_loss_avg = curr_test_loss_avg
-            last_test_losses[(epoch - 1) % EARLY_STOPPING_EPOCHS_AVG] = test_results["test/macro_f1"]
-            curr_test_loss_avg = np.sum(last_test_losses) / np.minimum(EARLY_STOPPING_EPOCHS_AVG, epoch)
-            if curr_test_loss_avg >= prev_test_loss_avg:
+            prev_val_loss_avg = curr_val_loss_avg
+            last_val_losses[(epoch - 1) % EARLY_STOPPING_EPOCHS_AVG] = val_loss
+            curr_val_loss_avg = np.sum(last_val_losses) / np.minimum(EARLY_STOPPING_EPOCHS_AVG, epoch)
+            if curr_val_loss_avg >= prev_val_loss_avg:
                 early_stopping_counter += 1
             else:
                 early_stopping_counter = 0
             if early_stop and early_stopping_counter >= EARLY_STOPPING_PATIENCE:
                 # return the value for optuna hyperparameter search
                 self.logger.info(
-                    f"Early stopping at epoch {epoch} with score {curr_test_loss_avg:5.4f}"
+                    f"Early stopping at epoch {epoch} with score {curr_val_loss_avg:5.4f}"
                 )
-                return curr_test_loss_avg
+                return
 
             if find_lr and (epoch_loss > prev_epoch_loss):
                 with open(LR_FINDER_LOG_DIR + self.model_name, 'r') as f:
