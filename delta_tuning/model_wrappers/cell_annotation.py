@@ -694,8 +694,6 @@ class CellAnnotationModelWrapper():
                     param.requires_grad = True
                 self.logger.info(f"Un-freezing module {name}")
 
-        self.logger.info(f"Trainable parameters after unfreezing transformers: {trainable_params}")
-
 
     def add_delta_method(self, delta_model_config: dict, wandb_config: dict):
         """
