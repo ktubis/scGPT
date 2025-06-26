@@ -536,13 +536,14 @@ class TransformerModel(nn.Module):
             for param in module.parameters():
                 param.requires_grad = False
 
-    def print_trainable_parameters(self):
+    def get_trainable_parameters(self):
         """
         Print the number of trainable parameters in the model.
         """
         num_params = sum(p.numel() for p in self.parameters() if p.requires_grad) / \
                      sum(p.numel() for p in self.parameters())
         print(f"Number of trainable parameters: {num_params}")
+        return num_params
 
 
 

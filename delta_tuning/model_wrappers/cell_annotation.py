@@ -726,5 +726,6 @@ class CellAnnotationModelWrapper():
         else:
             raise ValueError(f"Unsupported delta type: {delta_method}. Supported types are: {SUPPORTED_DELTA_TYPES}")
         
-        self.model.print_trainable_parameters()
+        trainable_params = self.model.get_trainable_parameters()
         wandb_config["delta_method"] = delta_method
+        wandb_config["trainable_params"] = trainable_params
