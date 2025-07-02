@@ -15,6 +15,7 @@ class SupportedDatasets(Enum):
     MYE = "mye"
     PANCREAS = "pancreas"
     PANCREAS_OLD = "pancreas_old"  # For backward compatibility, if needed
+    SWAPPED_PANCREAS = "swapped_pc"
     
 def get_data_loader(ds_name):
     if ds_name == SupportedDatasets.FILTERED_PANCREAS.value:
@@ -27,6 +28,8 @@ def get_data_loader(ds_name):
         return PancreaticDataset()
     if ds_name == SupportedDatasets.PANCREAS_OLD.value:
         return PancreaticDatasetOLD()
+    if ds_name == SupportedDatasets.SWAPPED_PANCREAS.value:
+        return SwappedPancreas()
     raise ValueError("Invalid dataset name. Supported names are: ",
                      [ds.value for ds in SupportedDatasets])
 
@@ -78,6 +81,19 @@ class FilteredPancreas(DataLoader):
     DATASET_PATH = "data/datasets/annotation_pancreas/"
     TRAIN_DATA = "demo_train.h5ad"
     TEST_DATA = "demo_test.h5ad"
+
+    def __init__(self):
+        self.train_data = ad.read_h5ad(FilteredPancreas.DATASET_PATH + FilteredPancreas.TRAIN_DATA)
+        self.train_data.obs.rename(columns={"Celltype": "celltype"}, inplace=True)
+        # Remove the Muraro dataset from the training data
+        self.test_data = ad.read_h5ad(FilteredPancreas.DATASET_PATH + FilteredPancreas.TEST_DATA)
+        self.test_data.obs.rename(columns={"Celltype": "celltype"}, inplace=True)
+        self.add_celltype_id()
+
+class SwappedPancreas(DataLoader):
+    DATASET_PATH = "data/datasets/swapped_pancreas/"
+    TRAIN_DATA = "train.h5ad"
+    TEST_DATA = "test.h5ad"
 
     def __init__(self):
         self.train_data = ad.read_h5ad(FilteredPancreas.DATASET_PATH + FilteredPancreas.TRAIN_DATA)
