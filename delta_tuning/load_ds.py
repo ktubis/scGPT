@@ -16,6 +16,7 @@ class SupportedDatasets(Enum):
     PANCREAS = "pancreas"
     PANCREAS_OLD = "pancreas_old"  # For backward compatibility, if needed
     SWAPPED_PANCREAS = "swapped_pc"
+    COLORECTAL_CANCER = "cc"
     
 def get_data_loader(ds_name):
     if ds_name == SupportedDatasets.FILTERED_PANCREAS.value:
@@ -30,6 +31,8 @@ def get_data_loader(ds_name):
         return PancreaticDatasetOLD()
     if ds_name == SupportedDatasets.SWAPPED_PANCREAS.value:
         return SwappedPancreas()
+    if ds_name == SupportedDatasets.COLORECTAL_CANCER.value:
+        return ColorectalCancer()
     raise ValueError("Invalid dataset name. Supported names are: ",
                      [ds.value for ds in SupportedDatasets])
 
@@ -85,7 +88,6 @@ class FilteredPancreas(DataLoader):
     def __init__(self):
         self.train_data = ad.read_h5ad(FilteredPancreas.DATASET_PATH + FilteredPancreas.TRAIN_DATA)
         self.train_data.obs.rename(columns={"Celltype": "celltype"}, inplace=True)
-        # Remove the Muraro dataset from the training data
         self.test_data = ad.read_h5ad(FilteredPancreas.DATASET_PATH + FilteredPancreas.TEST_DATA)
         self.test_data.obs.rename(columns={"Celltype": "celltype"}, inplace=True)
         self.add_celltype_id()
@@ -96,10 +98,9 @@ class SwappedPancreas(DataLoader):
     TEST_DATA = "test.h5ad"
 
     def __init__(self):
-        self.train_data = ad.read_h5ad(FilteredPancreas.DATASET_PATH + FilteredPancreas.TRAIN_DATA)
+        self.train_data = ad.read_h5ad(SwappedPancreas.DATASET_PATH + SwappedPancreas.TRAIN_DATA)
         self.train_data.obs.rename(columns={"Celltype": "celltype"}, inplace=True)
-        # Remove the Muraro dataset from the training data
-        self.test_data = ad.read_h5ad(FilteredPancreas.DATASET_PATH + FilteredPancreas.TEST_DATA)
+        self.test_data = ad.read_h5ad(SwappedPancreas.DATASET_PATH + SwappedPancreas.TEST_DATA)
         self.test_data.obs.rename(columns={"Celltype": "celltype"}, inplace=True)
         self.add_celltype_id()
 
@@ -144,6 +145,25 @@ class Myeloid(DataLoader):
         self.train_data = ad.read_h5ad(Myeloid.DATASET_PATH + Myeloid.TRAIN_DATA)
         self.__class__.preprocess_data(self.train_data)
         self.test_data = ad.read_h5ad(Myeloid.DATASET_PATH + Myeloid.TEST_DATA)
+        self.__class__.preprocess_data(self.test_data)
+        self.add_celltype_id()
+
+class ColorectalCancer(DataLoader):
+    DATASET_PATH = "data/datasets/10x_v2_v3_immune_hubs/"
+    TRAIN_DATA = "adata_train.h5ad"
+    TEST_DATA = "adata_test.h5ad"
+
+    @staticmethod
+    def preprocess_data(adata):
+        """
+        Preprocess the AnnData object by renaming columns and ensuring categorical types.
+        """
+        adata.obs["batch_id"] = adata.obs["batch_id"].astype("int")
+
+    def __init__(self):
+        self.train_data = ad.read_h5ad(ColorectalCancer.DATASET_PATH + ColorectalCancer.TRAIN_DATA)
+        self.__class__.preprocess_data(self.train_data)
+        self.test_data = ad.read_h5ad(ColorectalCancer.DATASET_PATH + ColorectalCancer.TEST_DATA)
         self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
 
