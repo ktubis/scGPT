@@ -93,7 +93,7 @@ class FilteredPancreas(DataLoader):
         self.add_celltype_id()
 
 class SwappedPancreas(DataLoader):
-    DATASET_PATH = "data/datasets/swapped_pancreas/"
+    DATASET_PATH = "data/datasets/pancreas_swapped/"
     TRAIN_DATA = "train.h5ad"
     TEST_DATA = "test.h5ad"
 
