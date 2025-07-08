@@ -17,6 +17,8 @@ class SupportedDatasets(Enum):
     PANCREAS_OLD = "pancreas_old"  # For backward compatibility, if needed
     SWAPPED_PANCREAS = "swapped_pc"
     COLORECTAL_CANCER = "cc"
+    HIGH_CORR_CC = "high_cc"
+    WEAK_CORR_CC = "weak_cc"
     
 def get_data_loader(ds_name):
     if ds_name == SupportedDatasets.FILTERED_PANCREAS.value:
@@ -33,6 +35,10 @@ def get_data_loader(ds_name):
         return SwappedPancreas()
     if ds_name == SupportedDatasets.COLORECTAL_CANCER.value:
         return ColorectalCancer()
+    if ds_name == SupportedDatasets.HIGH_CORR_CC.value:
+        return HighCorrColorectalCancer()
+    if ds_name == SupportedDatasets.WEAK_CORR_CC.value:
+        return WeakCorrColorectalCancer()
     raise ValueError("Invalid dataset name. Supported names are: ",
                      [ds.value for ds in SupportedDatasets])
 
@@ -42,6 +48,12 @@ class DataLoader(ABC):
         self.train_data = None
         self.test_data = None
         self.num_celltypes = 0
+        self.train_path = ""
+        self.test_path = ""
+
+    def read_data(self):
+        self.train_data = ad.read_h5ad(self.train_path)
+        self.test_data = ad.read_h5ad(self.test_path)
 
     def get_num_batches(self):
         """
@@ -81,35 +93,26 @@ class DataLoader(ABC):
         
 
 class FilteredPancreas(DataLoader):
-    DATASET_PATH = "data/datasets/annotation_pancreas/"
-    TRAIN_DATA = "demo_train.h5ad"
-    TEST_DATA = "demo_test.h5ad"
-
     def __init__(self):
-        self.train_data = ad.read_h5ad(FilteredPancreas.DATASET_PATH + FilteredPancreas.TRAIN_DATA)
+        self.train_path = "data/datasets/annotation_pancreas/demo_train.h5ad"
+        self.test_path = "data/datasets/annotation_pancreas/demo_test.h5ad"
+        self.read_data()
         self.train_data.obs.rename(columns={"Celltype": "celltype"}, inplace=True)
-        self.test_data = ad.read_h5ad(FilteredPancreas.DATASET_PATH + FilteredPancreas.TEST_DATA)
         self.test_data.obs.rename(columns={"Celltype": "celltype"}, inplace=True)
         self.add_celltype_id()
 
 class SwappedPancreas(DataLoader):
-    DATASET_PATH = "data/datasets/pancreas_swapped/"
-    TRAIN_DATA = "train.h5ad"
-    TEST_DATA = "test.h5ad"
-
     def __init__(self):
-        self.train_data = ad.read_h5ad(SwappedPancreas.DATASET_PATH + SwappedPancreas.TRAIN_DATA)
+        self.train_path = "data/datasets/pancreas_swapped/train.h5ad"
+        self.test_path = "data/datasets/pancreas_swapped/test.h5ad"
+        self.read_data()
         self.train_data.obs.rename(columns={"Celltype": "celltype"}, inplace=True)
-        self.test_data = ad.read_h5ad(SwappedPancreas.DATASET_PATH + SwappedPancreas.TEST_DATA)
         self.test_data.obs.rename(columns={"Celltype": "celltype"}, inplace=True)
         self.add_celltype_id()
 
     
 
 class MS(DataLoader):
-    DATASET_PATH = "data/datasets/ms/"
-    TRAIN_DATA = "filtered_ms_adata.h5ad"
-    TEST_DATA = "c_data.h5ad"
 
     @staticmethod
     def preprocess_data(adata):
@@ -120,18 +123,15 @@ class MS(DataLoader):
         adata.obs["batch_id"] = adata.obs["batch_id"].astype("int")
 
     def __init__(self):
-        self.train_data = ad.read_h5ad(MS.DATASET_PATH + MS.TRAIN_DATA)
+        self.train_path = "data/datasets/ms/filtered_ms_adata.h5ad"
+        self.test_path = "data/datasets/ms/c_data.h5ad"
+        self.read_data()
         self.__class__.preprocess_data(self.train_data)
-        self.test_data = ad.read_h5ad(MS.DATASET_PATH + MS.TEST_DATA)
         self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
 
 
 class Myeloid(DataLoader):
-    DATASET_PATH = "data/datasets/mye/"
-    TRAIN_DATA = "reference_adata.h5ad"
-    TEST_DATA = "query_adata.h5ad"
-
     @staticmethod
     def preprocess_data(adata):
         """
@@ -142,17 +142,14 @@ class Myeloid(DataLoader):
         adata.obs["batch_id"] = adata.obs["batch_id"].astype("int")
 
     def __init__(self):
-        self.train_data = ad.read_h5ad(Myeloid.DATASET_PATH + Myeloid.TRAIN_DATA)
+        self.train_path = "data/datasets/mye/reference_adata.h5ad"
+        self.test_path = "data/datasets/mye/query_adata.h5ad"
+        self.read_data()
         self.__class__.preprocess_data(self.train_data)
-        self.test_data = ad.read_h5ad(Myeloid.DATASET_PATH + Myeloid.TEST_DATA)
         self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
 
 class ColorectalCancer(DataLoader):
-    DATASET_PATH = "data/datasets/10x_v2_v3_immune_hubs/"
-    TRAIN_DATA = "adata_train.h5ad"
-    TEST_DATA = "adata_test.h5ad"
-
     @staticmethod
     def preprocess_data(adata):
         """
@@ -161,9 +158,42 @@ class ColorectalCancer(DataLoader):
         adata.obs["batch_id"] = adata.obs["batch_id"].astype("int")
 
     def __init__(self):
-        self.train_data = ad.read_h5ad(ColorectalCancer.DATASET_PATH + ColorectalCancer.TRAIN_DATA)
+        self.train_path = "data/datasets/10x_v2_v3_immune_hubs/adata_train.h5ad"
+        self.test_path = "data/datasets/10x_v2_v3_immune_hubs/adata_test.h5ad"
+        self.read_data()
         self.__class__.preprocess_data(self.train_data)
-        self.test_data = ad.read_h5ad(ColorectalCancer.DATASET_PATH + ColorectalCancer.TEST_DATA)
+        self.__class__.preprocess_data(self.test_data)
+        self.add_celltype_id()
+
+class WeakCorrColorectalCancer(DataLoader):
+    @staticmethod
+    def preprocess_data(adata):
+        """
+        Preprocess the AnnData object by renaming columns and ensuring categorical types.
+        """
+        adata.obs["batch_id"] = adata.obs["batch_id"].astype("int")
+
+    def __init__(self):
+        self.train_path = "data/datasets/10x_v2_v3_immune_hubs/weak_corr_train.h5ad"
+        self.test_path = "data/datasets/10x_v2_v3_immune_hubs/weak_corr_test.h5ad"
+        self.read_data()
+        self.__class__.preprocess_data(self.train_data)
+        self.__class__.preprocess_data(self.test_data)
+        self.add_celltype_id()
+
+class HighCorrColorectalCancer(DataLoader):
+    @staticmethod
+    def preprocess_data(adata):
+        """
+        Preprocess the AnnData object by renaming columns and ensuring categorical types.
+        """
+        adata.obs["batch_id"] = adata.obs["batch_id"].astype("int")
+
+    def __init__(self):
+        self.train_path = "data/datasets/10x_v2_v3_immune_hubs/high_corr_train.h5ad"
+        self.test_path = "data/datasets/10x_v2_v3_immune_hubs/high_corr_test.h5ad"
+        self.read_data()
+        self.__class__.preprocess_data(self.train_data)
         self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
 
