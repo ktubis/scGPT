@@ -211,11 +211,13 @@ class HighCorrColorectalCancer(DataLoader):
         """
         Preprocess the AnnData object by renaming columns and ensuring categorical types.
         """
-        adata.obs["batch_id"] = adata.obs["batch_id"].astype("int")
+        adata.obs["batch_id"] = adata.obs["batchID"].astype("category").cat.codes
+        adata.obs.rename(columns={"celltype": "celltype_small"}, inplace=True)
+        adata.obs.rename(columns={"celltype_mid": "celltype"}, inplace=True)
 
     def __init__(self):
-        self.train_path = "data/datasets/10x_v2_v3_immune_hubs/high_corr_train.h5ad"
-        self.test_path = "data/datasets/10x_v2_v3_immune_hubs/high_corr_test.h5ad"
+        self.train_path = "data/datasets/10x_v2_v3_immune_hubs/hard_train.h5ad"
+        self.test_path = "data/datasets/10x_v2_v3_immune_hubs/hard_test.h5ad"
         self.read_data()
         self.__class__.preprocess_data(self.train_data)
         self.__class__.preprocess_data(self.test_data)
