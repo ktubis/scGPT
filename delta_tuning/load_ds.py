@@ -161,7 +161,7 @@ class ColorectalCancer(DataLoader):
         """
         Preprocess the AnnData object by renaming columns and ensuring categorical types.
         """
-        adata.obs["batch_id"] = adata.obs["batchID"].astype("int")
+        adata.obs["batch_id"] = adata.obs["batchID"].astype("category").cat.codes
         adata.obs.rename(columns={"celltype": "celltype_small"}, inplace=True)
         adata.obs.rename(columns={"celltype_mid": "celltype"}, inplace=True)
 
