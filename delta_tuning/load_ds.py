@@ -231,6 +231,7 @@ class Intestine(DataLoader):
         Preprocess the AnnData object by renaming columns and ensuring categorical types.
         """
         adata.obs["batch_id"] = adata.obs["batch"].astype("int")
+        adata.obs.rename(columns={"cell_type": "celltype"}, inplace=True)
 
     def __init__(self):
         self.train_path = "data/datasets/intestine/adata_train.h5ad"
