@@ -21,6 +21,7 @@ class SupportedDatasets(Enum):
     WEAK_CORR_CC = "weak_cc"
     WEAK_CORR_CC2 = "weak_cc2"
     INTESTINE = "int"
+    TMP = "tmp"
     
 def get_data_loader(ds_name):
     if ds_name == SupportedDatasets.FILTERED_PANCREAS.value:
@@ -45,6 +46,8 @@ def get_data_loader(ds_name):
         return WeakCorrColorectalCancer2()
     if ds_name == SupportedDatasets.INTESTINE.value:
         return Intestine()
+    if ds_name == SupportedDatasets.TMP:
+        return TMP()
     raise ValueError("Invalid dataset name. Supported names are: ",
                      [ds.value for ds in SupportedDatasets])
 
@@ -236,6 +239,23 @@ class Intestine(DataLoader):
     def __init__(self):
         self.train_path = "data/datasets/intestine/adata_train.h5ad"
         self.test_path = "data/datasets/intestine/adata_test.h5ad"
+        self.read_data()
+        self.__class__.preprocess_data(self.train_data)
+        self.__class__.preprocess_data(self.test_data)
+        self.add_celltype_id()
+
+class TMP(DataLoader):
+    @staticmethod
+    def preprocess_data(adata):
+        """
+        Preprocess the AnnData object by renaming columns and ensuring categorical types.
+        """
+        adata.obs["batch_id"] = adata.obs["donor_id"].astype("category").cat.codes
+        adata.obs.rename(columns={"celltypes": "celltype"}, inplace=True)
+
+    def __init__(self):
+        self.train_path = "data/datasets/tmp/XEN_T10_A2.h5ad"
+        self.test_path = "data/datasets/tmp/XEN_T10_A2.h5ad"
         self.read_data()
         self.__class__.preprocess_data(self.train_data)
         self.__class__.preprocess_data(self.test_data)
