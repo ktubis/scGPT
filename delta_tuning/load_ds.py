@@ -21,9 +21,13 @@ class SupportedDatasets(Enum):
     WEAK_CORR_CC = "weak_cc"
     WEAK_CORR_CC2 = "weak_cc2"
     INTESTINE = "int"
-    TMP = "tmp"
+    TMP = "lalala"
+    DOWNSAMPLED_INT = "downsampled_int"
+    DOWNSAMPLED_CC = "downsampled_cc"
+
     
 def get_data_loader(ds_name):
+    print("DS NAME", ds_name)
     if ds_name == SupportedDatasets.FILTERED_PANCREAS.value:
         return FilteredPancreas()
     if ds_name == SupportedDatasets.MS.value:
@@ -46,8 +50,12 @@ def get_data_loader(ds_name):
         return WeakCorrColorectalCancer2()
     if ds_name == SupportedDatasets.INTESTINE.value:
         return Intestine()
-    if ds_name == SupportedDatasets.TMP:
+    if ds_name == SupportedDatasets.TMP.value:
         return TMP()
+    if ds_name == SupportedDatasets.DOWNSAMPLED_INT.value:
+        return DownsampledInt()
+    if ds_name == SupportedDatasets.DOWNSAMPLED_CC.value:
+        return DodnsampledCC()
     raise ValueError("Invalid dataset name. Supported names are: ",
                      [ds.value for ds in SupportedDatasets])
 
@@ -176,6 +184,25 @@ class ColorectalCancer(DataLoader):
         self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
 
+class DownsampledCC(DataLoader):
+    @staticmethod
+    def preprocess_data(adata):
+        """
+        Preprocess the AnnData object by renaming columns and ensuring categorical types.
+        """
+        adata.obs["batch_id"] = adata.obs["batchID"].astype("category").cat.codes
+        adata.obs.rename(columns={"celltype": "celltype_small"}, inplace=True)
+        adata.obs.rename(columns={"celltype_mid": "celltype"}, inplace=True)
+
+    def __init__(self):
+        self.train_path = "data/datasets/10x_v2_v3_immune_hubs/downsampled_train.h5ad"
+        self.test_path = "data/datasets/10x_v2_v3_immune_hubs/test_all_cells_3k.h5ad"
+        self.read_data()
+        self.__class__.preprocess_data(self.train_data)
+        self.__class__.preprocess_data(self.test_data)
+        self.add_celltype_id()
+
+
 class WeakCorrColorectalCancer(DataLoader):
     @staticmethod
     def preprocess_data(adata):
@@ -238,6 +265,23 @@ class Intestine(DataLoader):
 
     def __init__(self):
         self.train_path = "data/datasets/intestine/train_not_beumer_not_holloway.h5ad"
+        self.test_path = "data/datasets/intestine/test_beumer.h5ad"
+        self.read_data()
+        self.__class__.preprocess_data(self.train_data)
+        self.__class__.preprocess_data(self.test_data)
+        self.add_celltype_id()
+
+class DownsampledInt(DataLoader):
+    @staticmethod
+    def preprocess_data(adata):
+        """
+        Preprocess the AnnData object by renaming columns and ensuring categorical types.
+        """
+        adata.obs["batch_id"] = adata.obs["batch"].astype("int")
+        adata.obs.rename(columns={"cell_type": "celltype"}, inplace=True)
+
+    def __init__(self):
+        self.train_path = "data/datasets/intestine/downsampled_train.h5ad"
         self.test_path = "data/datasets/intestine/test_beumer.h5ad"
         self.read_data()
         self.__class__.preprocess_data(self.train_data)
