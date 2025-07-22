@@ -55,7 +55,7 @@ def get_data_loader(ds_name):
     if ds_name == SupportedDatasets.DOWNSAMPLED_INT.value:
         return DownsampledInt()
     if ds_name == SupportedDatasets.DOWNSAMPLED_CC.value:
-        return DodnsampledCC()
+        return DownsampledCC()
     raise ValueError("Invalid dataset name. Supported names are: ",
                      [ds.value for ds in SupportedDatasets])
 
