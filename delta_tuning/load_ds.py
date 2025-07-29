@@ -24,6 +24,7 @@ class SupportedDatasets(Enum):
     DOWNSAMPLED_INT = "downsampled_int"
     DOWNSAMPLED_CC = "downsampled_cc"
     PBMC = "pbmc"
+    COVID = "covid"
 
     
 def get_data_loader(ds_name):
@@ -52,6 +53,8 @@ def get_data_loader(ds_name):
         return Intestine()
     if ds_name == SupportedDatasets.PBMC.value:
         return PBMC()
+    if ds_name == SupportedDatasets.COVID.value:
+        return Covid()
     if ds_name == SupportedDatasets.DOWNSAMPLED_INT.value:
         return DownsampledInt()
     if ds_name == SupportedDatasets.DOWNSAMPLED_CC.value:
@@ -300,6 +303,23 @@ class PBMC(DataLoader):
 
     def __init__(self):
         self.train_path = "data/batch_correction/pbmc.h5ad"
+        self.train_data = ad.read_h5ad(self.train_path)
+        self.__class__.preprocess_data(self.train_data)
+        self.test_data = self.train_data[self.train_data.obs["batch_id"].argsort()].copy()
+        self.add_celltype_id()
+
+class Covid(DataLoader):
+    @staticmethod
+    def preprocess_data(adata):
+        """
+        Preprocess the AnnData object by renaming columns and ensuring categorical types.
+        """
+        adata.obs["batch_id"] = adata.obs["study2"].astype("category").cat.codes
+        adata.obs["str_batch"] = adata.obs["study2"].astype(str)
+        adata.obs.rename(columns={"str_labels": "celltype"}, inplace=True)
+
+    def __init__(self):
+        self.train_path = "data/batch_correction/covid19.h5ad"
         self.train_data = ad.read_h5ad(self.train_path)
         self.__class__.preprocess_data(self.train_data)
         self.test_data = self.train_data[self.train_data.obs["batch_id"].argsort()].copy()
