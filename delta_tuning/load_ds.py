@@ -21,9 +21,9 @@ class SupportedDatasets(Enum):
     WEAK_CORR_CC = "weak_cc"
     WEAK_CORR_CC2 = "weak_cc2"
     INTESTINE = "int"
-    TMP = "lalala"
     DOWNSAMPLED_INT = "downsampled_int"
     DOWNSAMPLED_CC = "downsampled_cc"
+    PBMC = "pbmc"
 
     
 def get_data_loader(ds_name):
@@ -50,8 +50,8 @@ def get_data_loader(ds_name):
         return WeakCorrColorectalCancer2()
     if ds_name == SupportedDatasets.INTESTINE.value:
         return Intestine()
-    if ds_name == SupportedDatasets.TMP.value:
-        return TMP()
+    if ds_name == SupportedDatasets.PBMC.value:
+        return PBMC()
     if ds_name == SupportedDatasets.DOWNSAMPLED_INT.value:
         return DownsampledInt()
     if ds_name == SupportedDatasets.DOWNSAMPLED_CC.value:
@@ -288,21 +288,21 @@ class DownsampledInt(DataLoader):
         self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
 
-class TMP(DataLoader):
+class PBMC(DataLoader):
     @staticmethod
     def preprocess_data(adata):
         """
         Preprocess the AnnData object by renaming columns and ensuring categorical types.
         """
-        adata.obs["batch_id"] = adata.obs["donor_id"].astype("category").cat.codes
-        adata.obs.rename(columns={"celltypes": "celltype"}, inplace=True)
+        adata.obs["batch_id"] = adata.obs["batch"].astype("category").cat.codes
+        adata.obs["str_batch"] = adata.obs["batch"].astype(str)
+        adata.obs.rename(columns={"str_labels": "celltype"}, inplace=True)
 
     def __init__(self):
-        self.train_path = "data/datasets/tmp/XEN_T10_A2.h5ad"
-        self.test_path = "data/datasets/tmp/XEN_T10_A2.h5ad"
-        self.read_data()
+        self.train_path = "data/batch_correction/pbmc.h5ad"
+        self.train_data = ad.read_h5ad(self.train_path)
         self.__class__.preprocess_data(self.train_data)
-        self.__class__.preprocess_data(self.test_data)
+        self.test_data = self.train_data[self.train_data.obs["batch_id"].argsort()].copy()
         self.add_celltype_id()
 
 
