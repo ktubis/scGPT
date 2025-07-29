@@ -336,7 +336,7 @@ class PeriCortex(DataLoader):
         """
         adata.obs["batch_id"] = adata.obs["sample_id"].astype("category").cat.codes
         adata.obs["str_batch"] = adata.obs["sample_id"].astype(str)
-        adata.obs.rename(columns={"str_labels": "cell_type"}, inplace=True)
+        adata.obs.rename(columns={"cell_type": "celltype"}, inplace=True)
 
     def __init__(self):
         self.train_path = "data/batch_correction/peri_cortex_processed.h5ad"
