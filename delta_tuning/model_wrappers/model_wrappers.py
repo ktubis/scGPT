@@ -1008,14 +1008,17 @@ class BatchCorrection(ScGPTModelWrapper):
     def unfreeze_batch_correction_modules(self):
         for param in self.model.batch_encoder.parameters():
             param.requires_grad = True
+        # Adversarial descriminator to predict which batch a cell is coming from.
         for param in self.model.grad_reverse_discriminator.parameters():
             param.requires_grad = True
+        # Decoder for the masked value prediction for cell embeddings.
         for param in self.model.mvc_decoder.parameters():
             param.requires_grad = True
-        for param in self.model.cls_decoder.parameters():
-            param.requires_grad = True
+                # Domain specific batch norm
         for param in self.model.dsbn.parameters():
             param.requires_grad = True
+        #for param in self.model.cls_decoder.parameters():
+        #    param.requires_grad = True
         #for param in self.model.transformer_encoder.parameters():
         #    param.requires_grad = True
         #for param in self.model.decoder.parameters():
@@ -1130,7 +1133,7 @@ class BatchCorrection(ScGPTModelWrapper):
         cur_error = self.losses_dict["error"] / self.log_interval
         self.logger.info(
             f"| epoch {epoch:3d} | {batch:3d}/{num_batches:3d} batches | "
-            f"lr {lr:05.4f} | ms/batch {ms_per_batch:5.2f} | "
+            f"lr {lr:05.8f} | ms/batch {ms_per_batch:5.2f} | "
             f"loss {cur_loss:5.2f} | mse {cur_mse:5.2f} | mre {cur_error:5.2f} |"
             + (f"gepc {cur_gepc:5.2f} |")
         )
