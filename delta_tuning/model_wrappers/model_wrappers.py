@@ -1168,7 +1168,7 @@ class BatchCorrection(ScGPTModelWrapper):
             show=False,
         )
 
-        results["batch_umap"] = fig
+        results["batch_umap"] = wandb.Image(fig)
 
         sc.pp.neighbors(adata_t, use_rep="X_scGPT")
         sc.tl.umap(adata_t, min_dist=0.3)
@@ -1183,7 +1183,7 @@ class BatchCorrection(ScGPTModelWrapper):
             show=False,
         )
 
-        results["celltype_umap"] = fig
+        results["celltype_umap"] = wandb.Image(fig)
 
         return results
     
