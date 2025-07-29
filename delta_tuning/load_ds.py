@@ -25,6 +25,7 @@ class SupportedDatasets(Enum):
     DOWNSAMPLED_CC = "downsampled_cc"
     PBMC = "pbmc"
     COVID = "covid"
+    PERI_CORTEX = "peri_cortex"
 
     
 def get_data_loader(ds_name):
@@ -55,6 +56,8 @@ def get_data_loader(ds_name):
         return PBMC()
     if ds_name == SupportedDatasets.COVID.value:
         return Covid()
+    if ds_name == SupportedDatasets.PERI_CORTEX.value:
+        return PeriCortex()
     if ds_name == SupportedDatasets.DOWNSAMPLED_INT.value:
         return DownsampledInt()
     if ds_name == SupportedDatasets.DOWNSAMPLED_CC.value:
@@ -320,6 +323,23 @@ class Covid(DataLoader):
 
     def __init__(self):
         self.train_path = "data/batch_correction/covid19.h5ad"
+        self.train_data = ad.read_h5ad(self.train_path)
+        self.__class__.preprocess_data(self.train_data)
+        self.test_data = self.train_data[self.train_data.obs["batch_id"].argsort()].copy()
+        self.add_celltype_id()
+
+class PeriCortex(DataLoader):
+    @staticmethod
+    def preprocess_data(adata):
+        """
+        Preprocess the AnnData object by renaming columns and ensuring categorical types.
+        """
+        adata.obs["batch_id"] = adata.obs["sample_id"].astype("category").cat.codes
+        adata.obs["str_batch"] = adata.obs["sample_id"].astype(str)
+        adata.obs.rename(columns={"str_labels": "cell_type"}, inplace=True)
+
+    def __init__(self):
+        self.train_path = "data/batch_correction/peri_cortex_processed.h5ad"
         self.train_data = ad.read_h5ad(self.train_path)
         self.__class__.preprocess_data(self.train_data)
         self.test_data = self.train_data[self.train_data.obs["batch_id"].argsort()].copy()
