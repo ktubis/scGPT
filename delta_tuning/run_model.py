@@ -337,6 +337,7 @@ def main():
         "epochs": args.epochs,
         "seed": args.seed,
         "dataset": args.train_data,
+        "task": args.model_task,
     }
 
     if args.num_layers:
