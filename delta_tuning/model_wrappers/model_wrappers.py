@@ -592,9 +592,10 @@ class ScGPTModelWrapper(ABC):
             train_loader, valid_loader = self._get_train_valid_data_per_epoch(
                 split_data, tokenized_train, tokenized_valid)
             epoch_loss = self._train_step(train_loader, optimizer, scheduler, scaler, epoch)
+            last_lr = float(scheduler.get_last_lr()[0])
             if find_lr:
                 with open(LR_FINDER_LOG_DIR + self.model_name, 'a') as f:
-                    f.write(f"{scheduler.get_last_lr()[0]} {epoch_loss}\n")
+                    f.write(f"{last_lr} {epoch_loss}\n")
             eval_dict = self._evaluate(loader=valid_loader)
             val_loss = eval_dict["total_loss"]
             val_err = eval_dict["total_err"] 
@@ -652,7 +653,7 @@ class ScGPTModelWrapper(ABC):
                     "best_val_loss": best_val_loss,
                     "val_loss": val_loss,
                     "epoch": epoch,
-                    "lr": scheduler.get_last_lr()[0],
+                    "lr": last_lr,
                 }
             )
 
