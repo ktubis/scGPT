@@ -8,7 +8,7 @@
 import json
 import sys
 import load_ds
-from delta_tuning.model_wrappers.model_wrappers import ModelLoader, move_optimizer_params_to_cuda
+from model_wrappers.model_wrappers import ModelLoader, move_optimizer_params_to_cuda
 import random
 import torch
 import numpy as np
