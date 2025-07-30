@@ -183,8 +183,8 @@ class ColorectalCancer(DataLoader):
         adata.obs.rename(columns={"celltype_mid": "celltype"}, inplace=True)
 
     def __init__(self):
-        self.train_path = "data/datasets/10x_v2_v3_immune_hubs/train_all_cells_3k.h5ad"
-        self.test_path = "data/datasets/10x_v2_v3_immune_hubs/test_all_cells_3k.h5ad"
+        self.train_path = "data/datasets/10x_v2_v3_immune_hubs/adata_train.h5ad"
+        self.test_path = "data/datasets/10x_v2_v3_immune_hubs/adata_test.h5ad"
         self.read_data()
         self.__class__.preprocess_data(self.train_data)
         self.__class__.preprocess_data(self.test_data)
@@ -270,8 +270,8 @@ class Intestine(DataLoader):
         adata.obs.rename(columns={"cell_type": "celltype"}, inplace=True)
 
     def __init__(self):
-        self.train_path = "data/datasets/intestine/train_not_beumer_not_holloway.h5ad"
-        self.test_path = "data/datasets/intestine/test_beumer.h5ad"
+        self.train_path = "data/datasets/intestine/adata_train.h5ad"
+        self.test_path = "data/datasets/intestine/adata_test.h5ad"
         self.read_data()
         self.__class__.preprocess_data(self.train_data)
         self.__class__.preprocess_data(self.test_data)
