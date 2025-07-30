@@ -391,7 +391,7 @@ def main():
                 intermediate_embeddings_file = f"intermediate_embeddings/{model_name}_{args.train_data}"
                 test_kwargs["intermediate_embeddings_file"] = intermediate_embeddings_file
 
-        task_model.test(adata_test, **test_kwargs)
+            task_model.test(adata_test, **test_kwargs)
 
 
 if __name__ == "__main__":
