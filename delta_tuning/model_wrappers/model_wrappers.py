@@ -599,11 +599,13 @@ class ScGPTModelWrapper(ABC):
             eval_dict = self._evaluate(loader=valid_loader)
             val_loss = eval_dict["total_loss"]
             val_err = eval_dict["total_err"] 
-            test_results = self.test(adata_test)
 
-            self.logger.info(
-                f"Test results: {test_results}"
-            )
+            if not find_lr:
+                test_results = self.test(adata_test)
+
+                self.logger.info(
+                    f"Test results: {test_results}"
+                )
 
             elapsed = time.time() - epoch_start_time
             self.logger.info("-" * 89)
