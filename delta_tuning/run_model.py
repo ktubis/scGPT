@@ -128,20 +128,21 @@ def hyperparameter_search(task_model, num_epochs, adata_train, adata_test, trial
         eval_loss, _ = task_model._evaluate(valid_loader)
         if eval_loss < best_eval_loss:
             best_eval_loss = eval_loss
+            torch.save(task_model.model.state_dict(), "retrained_models/" + task_model.model_name + '.pth')
         if eval_loss > prev_eval_loss:
             bad_epochs_counter += 1
         prev_eval_loss = eval_loss
-        test_results = task_model.test(adata_test)
+        #test_results = task_model.test(adata_test)
         trial.report(eval_loss, step=epoch)
 
         #TODO: do the logging inside the test function
-        f1_score = test_results["test/macro_f1"]
+        #f1_score = test_results["test/macro_f1"]
         logger.info(
             f"Epoch {epoch:03d} | "
             f"train_loss: {epoch_loss:.4f} | "
             f"eval_loss: {eval_loss:.4f} | "
             f"best_eval: {best_eval_loss:.4f} | "
-            f"f1: {f1_score:.4f} | "
+            #f"f1: {f1_score:.4f} | "
             f"lr: {scheduler.get_last_lr()[0]:.4e}"
         )
         """
@@ -204,7 +205,7 @@ def find_hyperparams(model_loader, model_init_params, adata_train, adata_test, d
 
         #add_delta_method.add_delta_method(cam, delta_config, wandb_config)
 
-        wandb.watch(task_model.model, log="all", log_graph=True)
+        #wandb.watch(task_model.model, log="all", log_graph=True)
         return hyperparameter_search(task_model, num_epochs, adata_train, adata_test, trial, lr=lr,
                                      warm_up_percentage=warm_up_percentage,
                                      batch_size=model_init_params["batch_size"],
