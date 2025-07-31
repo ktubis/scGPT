@@ -26,6 +26,8 @@ class SupportedDatasets(Enum):
     PBMC = "pbmc"
     COVID = "covid"
     PERI_CORTEX = "peri_cortex"
+    PC_BATCH = "pc_batch"
+    CC_BATCH = "cc_batch"
 
     
 def get_data_loader(ds_name):
@@ -58,6 +60,10 @@ def get_data_loader(ds_name):
         return Covid()
     if ds_name == SupportedDatasets.PERI_CORTEX.value:
         return PeriCortex()
+    if ds_name == SupportedDatasets.CC_BATCH.value:
+        return CCForBatch()
+    if ds_name == SupportedDatasets.PC_BATCH.value:
+        return PCForBatch()
     if ds_name == SupportedDatasets.DOWNSAMPLED_INT.value:
         return DownsampledInt()
     if ds_name == SupportedDatasets.DOWNSAMPLED_CC.value:
@@ -340,6 +346,40 @@ class PeriCortex(DataLoader):
 
     def __init__(self):
         self.train_path = "data/batch_correction/peri_cortex_processed.h5ad"
+        self.train_data = ad.read_h5ad(self.train_path)
+        self.__class__.preprocess_data(self.train_data)
+        self.test_data = self.train_data[self.train_data.obs["batch_id"].argsort()].copy()
+        self.add_celltype_id()
+
+class CCForBatch(DataLoader):
+    @staticmethod
+    def preprocess_data(adata):
+        """
+        Preprocess the AnnData object by renaming columns and ensuring categorical types.
+        """
+        adata.obs["batch_id"] = adata.obs["seq"].astype("category").cat.codes
+        adata.obs["str_batch"] = adata.obs["batch_id"].astype(str)
+        adata.obs.rename(columns={"celltype": "celltype_small"}, inplace=True)
+        adata.obs.rename(columns={"celltype_mid": "celltype"}, inplace=True)
+
+    def __init__(self):
+        self.train_path = "data/batch_correction/cc_10x.h5ad"
+        self.train_data = ad.read_h5ad(self.train_path)
+        self.__class__.preprocess_data(self.train_data)
+        self.test_data = self.train_data[self.train_data.obs["batch_id"].argsort()].copy()
+        self.add_celltype_id()
+
+class PCForBatch(DataLoader):
+    @staticmethod
+    def preprocess_data(adata):
+        """
+        Preprocess the AnnData object by renaming columns and ensuring categorical types.
+        """
+        adata.obs.rename(columns={"Celltype": "celltype"}, inplace=True)
+        adata.obs["str_batch"] = adata.obs["batch_id"].astype(str)
+
+    def __init__(self):
+        self.train_path = "data/batch_correction/pc_joined.h5ad"
         self.train_data = ad.read_h5ad(self.train_path)
         self.__class__.preprocess_data(self.train_data)
         self.test_data = self.train_data[self.train_data.obs["batch_id"].argsort()].copy()
