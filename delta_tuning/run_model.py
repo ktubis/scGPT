@@ -144,7 +144,7 @@ def hyperparameter_search(task_model, num_epochs, adata_train, adata_test, trial
             f"f1: {f1_score:.4f} | "
             f"lr: {scheduler.get_last_lr()[0]:.4e}"
         )
-
+        """
         wandb.log(
             {
                 "epoch": epoch,
@@ -154,7 +154,7 @@ def hyperparameter_search(task_model, num_epochs, adata_train, adata_test, trial
                 "f1_score": f1_score,
                 "lr": scheduler.get_last_lr()[0],
             }
-        )
+        )"""
                 
         # Return if the model doesn't improve for a certain number of epochs
         if bad_epochs_counter >= OPTUNA_PRUNING_EPOCHS:
