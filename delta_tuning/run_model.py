@@ -190,12 +190,12 @@ def find_hyperparams(model_loader, model_init_params, adata_train, adata_test, d
 
         delta_method = delta_config["delta_method"]
         logger.info(f"Trial {trial.number}: lr: {lr}, delta_param: {delta_param}, num_epochs: {num_epochs}, warm_up_percentage: {warm_up_percentage}, delta_method: {delta_method}")
-
+        """
         wandb_config["lr"] = lr
         wandb_config["num_epochs"] = num_epochs
         wandb_config["warm_up_percentage"] = warm_up_percentage
         wandb_config["model_name"] = f"{wandb_config['model_name']}_{trial.number}"
-        init_wandb(wandb_config)
+        init_wandb(wandb_config)"""
 
         # Update the model config with the hyperparameters and create model
         model_init_params["delta_config"] = delta_config
