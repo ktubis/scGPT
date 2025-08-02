@@ -20,6 +20,7 @@ import traceback
 import matplotlib.pyplot as plt
 from enum import Enum
 import json
+from copy import deepcopy
 
 from arcitecture.transformer_wrapper import copy_original_model
 from OpenDelta.opendelta import AdapterModel, LoraModel
@@ -150,9 +151,10 @@ class ModelLoader():
             return CellAnnotation(self.task_train_dict, **model_config_dict)
         if self.model_task == ModelLoader.SupportedTasks.BATCH_CORRECTION.value:
             # Add 1 for batch token
-            self.task_train_dict['seq_len'] += 1
+            copied_dict = deepcopy(self.task_train_dict)
+            copied_dict['seq_len'] += 1
             model_config_dict['max_seq_len'] += 1
-            return BatchCorrection(self.task_train_dict, **model_config_dict)
+            return BatchCorrection(copied_dict, **model_config_dict)
         
     
                         
@@ -478,15 +480,14 @@ class ScGPTModelWrapper(ABC):
         #wandb.log(test_metrics)
 
         if save_predictions or save_embeddings:
-            predictions_df = adata.obs.copy()                
+            predictions_df = adata.obs.copy()       
+            if save_predictions:
+                predictions_df["predicted_celltype_id"] = test_eval_dict["predictions"]         
             if save_embeddings:
                 predictions_adata = ad.AnnData(obs=predictions_df)
                 predictions_adata.obsm["X_emb"] = cell_embeddings
-                predictions_adata.write_h5ad(predictions_file)
-            if save_predictions:
-                predictions_df["predicted_celltype_id"] = test_eval_dict["predictions"]
-                predictions_df.to_csv(predictions_file, index=True)
-        
+                predictions_adata.write_h5ad(embeddings_file)
+                    
         return test_metrics
 
 
