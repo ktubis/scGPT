@@ -125,7 +125,8 @@ def hyperparameter_search(task_model, num_epochs, adata_train, adata_test, trial
     for epoch in range(1, num_epochs + 1):
         train_loader, valid_loader = task_model._get_train_valid_data_per_epoch(split_data, gene_ids)
         epoch_loss = task_model._train_step(train_loader, optimizer, scheduler, scaler, epoch)
-        eval_loss, _ = task_model._evaluate(valid_loader)
+        eval_dict = task_model._evaluate(valid_loader)
+        eval_loss = eval_dict['total_loss']
         if eval_loss < best_eval_loss:
             best_eval_loss = eval_loss
             torch.save(task_model.model.state_dict(), "retrained_models/" + task_model.model_name + '.pth')
@@ -382,6 +383,7 @@ def main():
                         warm_up_percentage=args.warm_up_percentage)
             test_kwargs = {}
         else:
+            task_model.need_embeddings = True
             embeddings_file = f"cell_embeddings/{model_name}_{args.train_data}_{args.seed}"
             predictions_file = f"predictions/{model_name}_{args.train_data}_{args.seed}"
             test_kwargs = {
