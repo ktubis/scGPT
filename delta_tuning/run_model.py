@@ -121,9 +121,11 @@ def hyperparameter_search(task_model, num_epochs, adata_train, adata_test, trial
     assert num_epochs > 0, "num_epochs must be greater than 0"
     best_eval_loss = np.inf
     prev_eval_loss = np.inf
+    tokenized_train, tokenized_valid = task_model.tokenize_data(split_data, gene_ids)
 
     for epoch in range(1, num_epochs + 1):
-        train_loader, valid_loader = task_model._get_train_valid_data_per_epoch(split_data, gene_ids)
+        train_loader, valid_loader = task_model._get_train_valid_data_per_epoch(
+            split_data, tokenized_train, tokenized_valid)
         epoch_loss = task_model._train_step(train_loader, optimizer, scheduler, scaler, epoch)
         eval_dict = task_model._evaluate(valid_loader)
         eval_loss = eval_dict['total_loss']
