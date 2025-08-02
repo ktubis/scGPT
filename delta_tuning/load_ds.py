@@ -329,9 +329,10 @@ class Covid(DataLoader):
 
     def __init__(self):
         self.train_path = "data/batch_correction/covid19.h5ad"
-        self.train_data = ad.read_h5ad(self.train_path)
+        self.test_path = "data/batch_correction/covid_test.h5ad"
+        self.read_data()
         self.__class__.preprocess_data(self.train_data)
-        self.test_data = self.train_data[self.train_data.obs["batch_id"].argsort()].copy()
+        self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
 
 class PeriCortex(DataLoader):
@@ -346,9 +347,10 @@ class PeriCortex(DataLoader):
 
     def __init__(self):
         self.train_path = "data/batch_correction/peri_cortex_processed.h5ad"
-        self.train_data = ad.read_h5ad(self.train_path)
+        self.test_path = "data/batch_correction/peri_cortex_test.h5ad"
+        self.read_data()
         self.__class__.preprocess_data(self.train_data)
-        self.test_data = self.train_data[self.train_data.obs["batch_id"].argsort()].copy()
+        self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
 
 class CCForBatch(DataLoader):
@@ -365,8 +367,7 @@ class CCForBatch(DataLoader):
     def __init__(self):
         self.train_path = "data/batch_correction/cc_10x.h5ad"
         self.test_path = "data/batch_correction/cc_downsampled.h5ad"
-        self.train_data = ad.read_h5ad(self.train_path)
-        self.test_data = ad.read_h5ad(self.test_path)
+        self.read_data()
         self.__class__.preprocess_data(self.train_data)
         self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
@@ -382,9 +383,11 @@ class PCForBatch(DataLoader):
 
     def __init__(self):
         self.train_path = "data/batch_correction/pc_joined.h5ad"
-        self.train_data = ad.read_h5ad(self.train_path)
+        self.test_path = "data/batch_correction/pc_test.h5ad"
+        self.read_data()
         self.__class__.preprocess_data(self.train_data)
-        self.test_data = self.train_data[self.train_data.obs["batch_id"].argsort()].copy()
+        self.__class__.preprocess_data(self.test_data)
+        self.add_celltype_id()
         self.add_celltype_id()
 
 
