@@ -17,7 +17,7 @@ import argparse
 from pathlib import Path
 from datetime import datetime
 import optuna
-import wandb
+#import wandb
 from transformers import get_linear_schedule_with_warmup
 import logging
 
@@ -49,7 +49,7 @@ def set_seed(seed):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
-
+"""
 def init_wandb(wandb_config):
     wandb.init(
         config=wandb_config,
@@ -58,7 +58,7 @@ def init_wandb(wandb_config):
         settings=wandb.Settings(start_method="fork"),
         mode='online',
         name=wandb_config["model_name"],
-    )
+    )"""
 
 def preprocess_data(adata, preprocessor, vocab, batch_key=None):
     """
@@ -252,8 +252,8 @@ def run_optuna_hyperparam_search(model_loader, model_init_params, adata_train, a
 
 def train_model(args, adata_train, adata_test, task_model, delta_config, wandb_config, warm_up_percentage=0):
     print(delta_config)
-    init_wandb(wandb_config)
-    wandb.watch(task_model.model, log="all", log_graph=True)
+    #init_wandb(wandb_config)
+    #wandb.watch(task_model.model, log="all", log_graph=True)
     
     # If those hyperparams are specified in the training config, use them, otherwise use the args
     if delta_config.get("lr", None) is not None:

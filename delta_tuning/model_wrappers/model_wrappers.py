@@ -10,7 +10,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 import time
 import warnings
 from sklearn.model_selection import train_test_split
-import wandb
+#import wandb
 from collections import namedtuple
 from transformers import get_linear_schedule_with_warmup
 import anndata as ad
@@ -475,7 +475,7 @@ class ScGPTModelWrapper(ABC):
         #test_eval_dict["str_batch"] = adata.obs["str_batch"]
 
         test_metrics = self.calc_test_metrics(adata)
-        wandb.log(test_metrics)
+        #wandb.log(test_metrics)
 
         if save_predictions or save_embeddings:
             predictions_df = adata.obs.copy()                
@@ -648,7 +648,7 @@ class ScGPTModelWrapper(ABC):
                 best_val_loss = val_loss
                 self.logger.info(f"Best model with score {best_val_loss:5.4f}")
                 torch.save(self.model.state_dict(), RETRAINED_MODELS_DIR + self.model_name + '.pth')
-
+            """
             wandb.log(
                 {
                     "train_loss": epoch_loss,
@@ -657,7 +657,7 @@ class ScGPTModelWrapper(ABC):
                     "epoch": epoch,
                     "lr": last_lr,
                 }
-            )
+            )"""
 
     def prepare_data_for_test(self, adata):
         all_counts = (
@@ -894,7 +894,7 @@ class CellAnnotation(ScGPTModelWrapper):
         return self.loss_cls
 
     def update_loss(self, loss) -> float:
-        wandb.log({"train/loss": loss, "train/err": self.error_rate})
+        #wandb.log({"train/loss": loss, "train/err": self.error_rate})
 
         self.total_loss += loss
         self.total_loss_in_epoch += loss
@@ -951,7 +951,7 @@ class CellAnnotation(ScGPTModelWrapper):
             "test/macro_f1": macro_f1,
         }
 
-        wandb.log(results)
+        #wandb.log(results)
 
         return results
 
@@ -1155,14 +1155,14 @@ class BatchCorrection(ScGPTModelWrapper):
         adata.obs["celltype"] = test_results_dict["celltype"]
         adata.obs["str_batch"] = test_results_dict["str_batch"]
         adata.obsm["X_scGPT"] = cell_embeddings"""
-
+        
         results = {}
         try:
             results = eval_scib_metrics(adata_t)
         except Exception as e:
             traceback.print_exc()
             self.logger.error(e)
-
+        """
         sc.pp.neighbors(adata_t, use_rep="X_scGPT")
         sc.tl.umap(adata_t, min_dist=0.3)
         fig = sc.pl.umap(
@@ -1189,7 +1189,7 @@ class BatchCorrection(ScGPTModelWrapper):
             show=False,
         )
 
-        results["celltype_umap"] = wandb.Image(fig)
+        results["celltype_umap"] = wandb.Image(fig)"""
 
         return results
     
