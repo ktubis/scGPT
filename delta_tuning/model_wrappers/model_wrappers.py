@@ -565,19 +565,20 @@ class ScGPTModelWrapper(ABC):
         optimizer = torch.optim.Adam(
             self.model.parameters(), lr=lr, eps=self.eps
         )
+        steps_in_epoch = np.ceil(len(split_data.train_data) / self.batch_size)
         if find_lr:
             assert warm_up_percentage == 0, "Warm up epochs are not supported in lr finding mode."
             # If in the lr finding mode.
             scheduler = torch.optim.lr_scheduler.StepLR(
-                optimizer, FIND_LR_PERIOD, gamma=FIND_LR_GAMMA
+                optimizer, steps_in_epoch, gamma=FIND_LR_GAMMA
             )
         else:
-            num_training_steps = num_epochs * np.ceil(len(split_data.train_data) / self.batch_size)
+            num_training_steps = num_epochs * steps_in_epoch
             warm_up_steps = (warm_up_percentage / 100.) * num_training_steps
             scheduler = get_linear_schedule_with_warmup(
                 optimizer,
                 num_warmup_steps=warm_up_steps,
-                num_training_steps=num_epochs * np.ceil(len(split_data.train_data) / self.batch_size),
+                num_training_steps=num_epochs * steps_in_epoch,
             )
         move_optimizer_params_to_cuda(optimizer)
         scaler = torch.cuda.amp.GradScaler(enabled=True)
@@ -630,7 +631,7 @@ class ScGPTModelWrapper(ABC):
                 )
                 return
 
-            if find_lr and (epoch_loss > prev_epoch_loss):
+            if find_lr and (val_loss > prev_val_loss_avg):
                 with open(LR_FINDER_LOG_DIR + self.model_name, 'r') as f:
                     lines = f.readlines()
                 lrs = []
