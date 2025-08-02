@@ -10,7 +10,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 import time
 import warnings
 from sklearn.model_selection import train_test_split
-import wandb
+#import wandb
 from collections import namedtuple
 from transformers import get_linear_schedule_with_warmup
 import anndata as ad
@@ -97,9 +97,9 @@ def move_optimizer_params_to_cuda(optimizer):
                     p.data = p.data.cuda()
                     if p.grad is not None:
                         p.grad.data = p.grad.data.cuda()
-                        
+                       
 
-class CellAnnotationModelWrapper():
+class CellAnnotation():
 
     def __init__(self, model_path, pad_value, vocab, config_dict, num_batches, num_celltypes, max_seq_len, delta_config, batch_size=BATCH_SIZE, eval_batch_size=BATCH_SIZE, log_dir="cell_annotation_logs/",
                  mask_value=MASK_VALUE, mask_ratio=MASK_RATIO, model_name="awesome_model", log_wandb=False, schedule_interval=SCHEDULE_INTERVAL, schedule_ratio=SCHEDULE_RATIO, wandb_config=None):
@@ -130,7 +130,7 @@ class CellAnnotationModelWrapper():
         self.model_name = model_name
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
-        self.log_wandb = log_wandb
+        self.log_wandb = False #log_wandb
 
         # That's if input_embed_style in the config is "continuous"
         self.mask_value = mask_value
@@ -455,6 +455,7 @@ class CellAnnotationModelWrapper():
             self.model.zero_grad()
             if torch.cuda.is_available():
                 loss = loss.cuda()
+            #print(loss.item())
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
             with warnings.catch_warnings(record=True) as w:
@@ -472,9 +473,9 @@ class CellAnnotationModelWrapper():
                     )
             scaler.step(optimizer)
             scaler.update()
-
+            """
             if self.log_wandb:
-                wandb.log({"train/loss": loss.item(), "train/err": error_rate})
+                wandb.log({"train/loss": loss.item(), "train/err": error_rate})"""
 
             total_loss += loss.item()
             total_loss_in_epoch += loss.item()
@@ -527,7 +528,7 @@ class CellAnnotationModelWrapper():
         return split_data, gene_ids
 
 
-    def train(self, lr, num_epochs, adata, seed, adata_test, find_lr=False, warm_up_percentage=0, early_stop=False):
+    def train(self, lr, num_epochs, adata, adata_test, find_lr=False, warm_up_percentage=0, early_stop=False):
 
         split_data, gene_ids = self._get_split_data(adata)
         best_val_loss = float("inf")
@@ -612,7 +613,7 @@ class CellAnnotationModelWrapper():
                 best_val_loss = val_loss
                 self.logger.info(f"Best model with score {best_val_loss:5.4f}")
                 torch.save(self.model.state_dict(), RETRAINED_MODELS_DIR + self.model_name + '.pth')
-
+            """
             if self.log_wandb:
                 wandb.log(
                     {
@@ -624,7 +625,7 @@ class CellAnnotationModelWrapper():
                         "lr": scheduler.get_last_lr()[0],
                     }
                 )
-
+            """
             #scheduler.step()
 
     def add_open_delta_model(self, delta_model_config, wandb_config):

@@ -8,7 +8,7 @@
 import json
 import sys
 import load_ds
-from model_wrappers.cell_annotation import CellAnnotationModelWrapper, move_optimizer_params_to_cuda
+from delta_tuning.model_wrappers.model_wrappers import CellAnnotation, move_optimizer_params_to_cuda
 import random
 import torch
 import numpy as np
@@ -17,7 +17,7 @@ import argparse
 from pathlib import Path
 from datetime import datetime
 import optuna
-import wandb
+#import wandb
 from transformers import get_linear_schedule_with_warmup
 import logging
 
@@ -49,7 +49,7 @@ def set_seed(seed):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
-
+"""
 def init_wandb(wandb_config):
     wandb.init(
         config=wandb_config,
@@ -59,7 +59,7 @@ def init_wandb(wandb_config):
         mode='online',
         name=wandb_config["model_name"],
     )
-
+"""
 def preprocess_data(adata, preprocessor, vocab):
     """
     Filter genes in the AnnData object based on their presence in the vocabulary.
@@ -125,6 +125,7 @@ def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, lr, w
         eval_loss, _ = cam._evaluate(valid_loader)
         if eval_loss < best_eval_loss:
             best_eval_loss = eval_loss
+            bad_epochs_counter = 0
         if eval_loss > prev_eval_loss:
             bad_epochs_counter += 1
         prev_eval_loss = eval_loss
@@ -139,18 +140,17 @@ def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, lr, w
             f"f1: {f1_score:.4f} | "
             f"lr: {scheduler.get_last_lr()[0]:.4e}"
         )
-
-        if cam.log_wandb:
-            wandb.log(
-                {
-                    "epoch": epoch,
-                    "train_loss": epoch_loss,
-                    "eval_loss": eval_loss,
-                    "best_eval_loss": best_eval_loss,
-                    "f1_score": f1_score,
-                    "lr": scheduler.get_last_lr()[0],
-                }
-            )
+        """
+        wandb.log(
+            {
+                "epoch": epoch,
+                "train_loss": epoch_loss,
+                "eval_loss": eval_loss,
+                "best_eval_loss": best_eval_loss,
+                "f1_score": f1_score,
+                "lr": scheduler.get_last_lr()[0],
+            }
+        )"""
                 
         # Return if the model doesn't improve for a certain number of epochs
         if bad_epochs_counter >= OPTUNA_PRUNING_EPOCHS:
@@ -168,8 +168,6 @@ def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, lr, w
 
 def update_model_config(model_config, hyperparams):
     model_config["lr"] = hyperparams["lr"]
-    model_config["schedule_interval"] = hyperparams["schedule_interval"]
-    model_config["schedule_ratio"] = hyperparams["schedule_ratio"]
     return model_config
 
 def find_hyperparams(model_init_params, adata_train, adata_test, delta_config, hyperparam_search_config, wandb_config, logger):
@@ -192,16 +190,16 @@ def find_hyperparams(model_init_params, adata_train, adata_test, delta_config, h
         wandb_config["num_epochs"] = num_epochs
         wandb_config["warm_up_percentage"] = warm_up_percentage
         wandb_config["model_name"] = f"{wandb_config['model_name']}_{trial.number}"
-        init_wandb(wandb_config)
+        #init_wandb(wandb_config)
 
         # Update the model config with the hyperparameters and create model
         model_init_params["delta_config"] = delta_config
         model_init_params["wandb_config"] = wandb_config
-        cam = CellAnnotationModelWrapper(**model_init_params)
+        cam = CellAnnotation(**model_init_params)
 
         #add_delta_method.add_delta_method(cam, delta_config, wandb_config)
 
-        wandb.watch(cam.model, log="all", log_graph=True)
+        #wandb.watch(cam.model, log="all", log_graph=True)
         return hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, lr=lr,
                                      warm_up_percentage=warm_up_percentage,
                                      batch_size=model_init_params["batch_size"],
@@ -248,9 +246,8 @@ def run_optuna_hyperparam_search(model_init_params, adata_train, adata_test, del
 
 def train_model(args, adata_train, adata_test, cam, delta_config, wandb_config, warm_up_percentage=0):
     print(delta_config)
-    if args.wandb:
-        init_wandb(wandb_config)
-        wandb.watch(cam.model, log="all", log_graph=True)
+    #init_wandb(wandb_config)
+    #wandb.watch(cam.model, log="all", log_graph=True)
     
     # If those hyperparams are specified in the training config, use them, otherwise use the args
     if delta_config.get("lr", None) is not None:
@@ -266,7 +263,7 @@ def train_model(args, adata_train, adata_test, cam, delta_config, wandb_config, 
     else:
         warm_up_percentage = args.warm_up_percentage
     
-    cam.train(lr, epochs, adata_train, args.seed, adata_test=adata_test, find_lr=args.find_lr,
+    cam.train(lr, epochs, adata_train, adata_test=adata_test, find_lr=args.find_lr,
               warm_up_percentage=warm_up_percentage, early_stop=args.early_stop)
 
 
@@ -285,8 +282,6 @@ def main():
     parser.add_argument("--find_lr", action="store_true", help="Turns on the learning rate finder. The lr argument is the starting lr in that case, and it should be a negative power of 10.")
     parser.add_argument("--delta_config_file", help="The file that stores the configs of the delta models. Must be a dict of dicts. If None, doesn't add a delta model.")
     parser.add_argument("--inference", action='store_true', help="Whether to run inference on the given model.")
-    parser.add_argument("--schedule_interval", type=int, default=20, help="The interval at which to schedule the learning rate.")
-    parser.add_argument("--schedule_ratio", type=float, default=0.9, help="The ratio of the learning rate to schedule.")
     parser.add_argument("--hyperparam_search_config", default=None, help="The configuration from which to do hyperparameter search.")
     parser.add_argument("--batch_size", type=int, default=32, help="The batch size to use for training.")
     parser.add_argument("--warm_up_percentage", type=int, default=0, help="The percentage of epochs to dedicate to the warm up.")
@@ -332,7 +327,6 @@ def main():
         "model_name": model_name,
         "epochs": args.epochs,
         "seed": args.seed,
-        "log_wandb": args.wandb,
         "dataset": args.train_data,
     }
 
@@ -351,9 +345,6 @@ def main():
         "num_celltypes": num_celltypes,
         "num_batches": num_batches,
         "model_name": model_name,
-        "log_wandb": args.wandb,
-        "schedule_interval": args.schedule_interval,
-        "schedule_ratio": args.schedule_ratio,
         "batch_size": args.batch_size,
         "eval_batch_size": args.batch_size,
         "delta_config": delta_config,
@@ -365,7 +356,7 @@ def main():
         run_optuna_hyperparam_search(model_init_params, adata_train, adata_test, delta_config,
                                      wandb_config, args.hyperparam_search_config, logging.getLogger())
     else:
-        cam = CellAnnotationModelWrapper(**model_init_params)
+        cam = CellAnnotation(**model_init_params)
         #add_delta_method.add_delta_method(cam, delta_config, wandb_config)
         if not args.inference:
             train_model(args, adata_train, adata_test, cam, delta_config, wandb_config, warm_up_percentage=args.warm_up_percentage)
