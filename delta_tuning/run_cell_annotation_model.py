@@ -126,6 +126,7 @@ def hyperparameter_search(cam, num_epochs, adata_train, adata_test, trial, lr, w
         if eval_loss < best_eval_loss:
             best_eval_loss = eval_loss
             bad_epochs_counter = 0
+            torch.save(cam.model.state_dict(), "retrained_models/" + cam.model_name + '_optuna.pth')
         if eval_loss > prev_eval_loss:
             bad_epochs_counter += 1
         prev_eval_loss = eval_loss
