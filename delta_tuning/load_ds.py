@@ -312,9 +312,10 @@ class PBMC(DataLoader):
 
     def __init__(self):
         self.train_path = "data/batch_correction/pbmc.h5ad"
-        self.train_data = ad.read_h5ad(self.train_path)
+        self.test_path = "data/batch_correction/pbmc_test.h5ad"
+        self.read_data()
         self.__class__.preprocess_data(self.train_data)
-        self.test_data = self.train_data[self.train_data.obs["batch_id"].argsort()].copy()
+        self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
 
 class Covid(DataLoader):
