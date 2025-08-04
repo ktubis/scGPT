@@ -386,8 +386,10 @@ class ScGPTModelWrapper(ABC):
                 input_gene_ids = batch_data["gene_ids"].to(self.device)
 
                 with torch.cuda.amp.autocast(enabled=True):
+                    forward_input_dict = self.get_forward_params_for_evaluation(batch_data)
+                    forward_input_dict["get_intermediate_outputs"] = get_intermediate_outputs
                     output = self.model(
-                        **self.get_forward_params_for_evaluation(batch_data)
+                        **forward_input_dict
                     )
 
                 if get_intermediate_outputs:
