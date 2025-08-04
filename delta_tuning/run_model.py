@@ -396,6 +396,7 @@ def main():
                 intermediate_embeddings_file = f"intermediate_embeddings/{model_name}_{args.train_data}"
                 test_kwargs["intermediate_embeddings_file"] = intermediate_embeddings_file
 
+            adata_test = ds_loader.get_test_data()
             task_model.test(adata_test, **test_kwargs)
 
 

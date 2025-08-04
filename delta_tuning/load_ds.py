@@ -119,9 +119,26 @@ class DataLoader(ABC):
     
     def get_train_test(self, test_ds_name=None):
         return self.train_data, self.test_data
+    
+class CellAnnotationDataloader(DataLoader):
+
+    def __init__(self):
+        super().__init__()
+
+    def get_test_data(self):
+        return self.test_data
+    
+class BatchCorrectionDataLoader(DataLoader):
+
+    def __init__(self):
+        super().__init__()
+    
+    def get_test_data(self):
+        return self.train_data[self.train_data.obs["batch_id"].argsort()].copy()
+
         
 
-class FilteredPancreas(DataLoader):
+class FilteredPancreas(CellAnnotationDataloader):
     def __init__(self):
         self.train_path = "data/datasets/annotation_pancreas/demo_train.h5ad"
         self.test_path = "data/datasets/annotation_pancreas/demo_test.h5ad"
@@ -130,7 +147,7 @@ class FilteredPancreas(DataLoader):
         self.test_data.obs.rename(columns={"Celltype": "celltype"}, inplace=True)
         self.add_celltype_id()
 
-class SwappedPancreas(DataLoader):
+class SwappedPancreas(CellAnnotationDataloader):
     def __init__(self):
         self.train_path = "data/datasets/pancreas_swapped/train.h5ad"
         self.test_path = "data/datasets/pancreas_swapped/test.h5ad"
@@ -141,7 +158,7 @@ class SwappedPancreas(DataLoader):
 
     
 
-class MS(DataLoader):
+class MS(CellAnnotationDataloader):
 
     @staticmethod
     def preprocess_data(adata):
@@ -160,7 +177,7 @@ class MS(DataLoader):
         self.add_celltype_id()
 
 
-class Myeloid(DataLoader):
+class Myeloid(CellAnnotationDataloader):
     @staticmethod
     def preprocess_data(adata):
         """
@@ -178,7 +195,7 @@ class Myeloid(DataLoader):
         self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
 
-class ColorectalCancer(DataLoader):
+class ColorectalCancer(CellAnnotationDataloader):
     @staticmethod
     def preprocess_data(adata):
         """
@@ -196,7 +213,7 @@ class ColorectalCancer(DataLoader):
         self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
 
-class DownsampledCC(DataLoader):
+class DownsampledCC(CellAnnotationDataloader):
     @staticmethod
     def preprocess_data(adata):
         """
@@ -215,7 +232,7 @@ class DownsampledCC(DataLoader):
         self.add_celltype_id()
 
 
-class WeakCorrColorectalCancer(DataLoader):
+class WeakCorrColorectalCancer(CellAnnotationDataloader):
     @staticmethod
     def preprocess_data(adata):
         """
@@ -231,7 +248,7 @@ class WeakCorrColorectalCancer(DataLoader):
         self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
 
-class WeakCorrColorectalCancer2(DataLoader):
+class WeakCorrColorectalCancer2(CellAnnotationDataloader):
     @staticmethod
     def preprocess_data(adata):
         """
@@ -247,7 +264,7 @@ class WeakCorrColorectalCancer2(DataLoader):
         self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
 
-class HighCorrColorectalCancer(DataLoader):
+class HighCorrColorectalCancer(CellAnnotationDataloader):
     @staticmethod
     def preprocess_data(adata):
         """
@@ -266,7 +283,7 @@ class HighCorrColorectalCancer(DataLoader):
         self.add_celltype_id()
 
 
-class Intestine(DataLoader):
+class Intestine(CellAnnotationDataloader):
     @staticmethod
     def preprocess_data(adata):
         """
@@ -283,7 +300,7 @@ class Intestine(DataLoader):
         self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
 
-class DownsampledInt(DataLoader):
+class DownsampledInt(CellAnnotationDataloader):
     @staticmethod
     def preprocess_data(adata):
         """
@@ -300,7 +317,7 @@ class DownsampledInt(DataLoader):
         self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
 
-class PBMC(DataLoader):
+class PBMC(BatchCorrectionDataLoader):
     @staticmethod
     def preprocess_data(adata):
         """
@@ -318,7 +335,7 @@ class PBMC(DataLoader):
         self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
 
-class Covid(DataLoader):
+class Covid(BatchCorrectionDataLoader):
     @staticmethod
     def preprocess_data(adata):
         """
@@ -336,7 +353,7 @@ class Covid(DataLoader):
         self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
 
-class PeriCortex(DataLoader):
+class PeriCortex(BatchCorrectionDataLoader):
     @staticmethod
     def preprocess_data(adata):
         """
@@ -354,7 +371,7 @@ class PeriCortex(DataLoader):
         self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
 
-class CCForBatch(DataLoader):
+class CCForBatch(BatchCorrectionDataLoader):
     @staticmethod
     def preprocess_data(adata):
         """
@@ -373,7 +390,7 @@ class CCForBatch(DataLoader):
         self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
 
-class PCForBatch(DataLoader):
+class PCForBatch(BatchCorrectionDataLoader):
     @staticmethod
     def preprocess_data(adata):
         """
