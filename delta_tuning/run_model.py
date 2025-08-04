@@ -393,11 +393,12 @@ def main():
                 "predictions_file": predictions_file,
             }
             if args.get_intermediate_outputs:
-                intermediate_embeddings_file = f"intermediate_embeddings/{model_name}_{args.train_data}"
+                intermediate_embeddings_file = f"intermediate_embeddings/{model_name}_{args.train_data}_{args.seed}"
                 test_kwargs["intermediate_embeddings_file"] = intermediate_embeddings_file
 
             adata_test = ds_loader.get_test_data()
             task_model.test(adata_test, **test_kwargs)
+            print("HERE")
 
 
 if __name__ == "__main__":
