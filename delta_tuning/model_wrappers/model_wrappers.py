@@ -460,7 +460,7 @@ class ScGPTModelWrapper(ABC):
             embeddings_adata = ad.AnnData(obs=adata.obs.copy())
             for i in range(len(cell_embeddings)):
                 embeddings_adata.obsm[f"transformer_layer_${i}"] = cell_embeddings[i]
-            embeddings_adata.write_h5ad(f"{INTERMEDIATE_EMBEDDINGS_DIR}{self.model_name}.h5ad")
+            embeddings_adata.write_h5ad(intermediate_embeddings_file)
             return
 
         save_predictions = predictions_file and self.need_predictions
