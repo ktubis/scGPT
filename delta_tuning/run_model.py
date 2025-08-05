@@ -87,7 +87,7 @@ def get_data_loaders(ds_loader, vocab, config_dict, test_data, n_hvg, model_task
         binning=config_dict["n_input_bins"],
         result_binned_key=INPUT_LAYER,
         subset_hvg=n_hvg if n_hvg < adata_train.shape[1] else False,
-        #hvg_flavor="cell_ranger"    # Assumes data is not raw
+        hvg_flavor="seurat"    # Assumes data is not raw
     )
 
     batch_key = "str_batch" if model_task == "batch_correction" else None
