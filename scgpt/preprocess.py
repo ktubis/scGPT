@@ -194,11 +194,11 @@ class Preprocessor:
                 )
             for row in layer_data:
                 if row.max() == 0:
-                    logger.warning(
-                        "The input data contains all zero rows. Please make sure "
-                        "this is expected. You can use the `filter_cell_by_counts` "
-                        "arg to filter out all zero rows."
-                    )
+                    #logger.warning(
+                    #    "The input data contains all zero rows. Please make sure "
+                    #    "this is expected. You can use the `filter_cell_by_counts` "
+                    #    "arg to filter out all zero rows."
+                    #)
                     binned_rows.append(np.zeros_like(row, dtype=np.int64))
                     bin_edges.append(np.array([0] * n_bins))
                     continue
