@@ -142,8 +142,10 @@ class TransformerModel(nn.Module):
             'input_ids': torch.randint(0, 16000, (self.batch_size, 100)),
             'inputs_embeds': torch.randint(0, 50, (self.batch_size, 100), dtype=torch.float),
             'src_key_padding_mask': torch.zeros(self.batch_size, 100, dtype=torch.bool),
-            "CLS": True,
         }
+
+        if self.use_batch_labels:
+            self.dummy_inputs['batch_labels'] = torch.zeros(self.batch_size, dtype=torch.int) 
 
 
     def init_weights(self) -> None:
