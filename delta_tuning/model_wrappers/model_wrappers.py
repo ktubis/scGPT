@@ -146,21 +146,26 @@ class ModelLoader():
         with open(f"{MODEL_CONFIG_DIR}{model_task}.json") as f:
             self.model_dict = json.load(f)
 
-    def get_model_dict(self):
-        return self.model_dict
-
+    def get_hvg(self):
+        if self.model_task == ModelLoader.SupportedTasks.CELLTYPE_ANNOTATION:
+            return self.task_train_dict['seq_len']
+        if self.model_task == ModelLoader.SupportedTasks.BATCH_CORRECTION:
+            return self.task_train_dict['seq_len'] - 1
+    
+    def get_input_bins(self):
+        return self.task_train_dict['n_input_bins']
+    
+    def get_pad_token(self):
+        return self.task_train_dict['pad_token']
+    
     def get_seq_len(self):
         return self.task_train_dict['seq_len']
 
     def get_model(self, model_config_dict):
         if self.model_task == ModelLoader.SupportedTasks.CELLTYPE_ANNOTATION.value:
-            return CellAnnotation(self.task_train_dict, **model_config_dict)
+            return CellAnnotation(self.task_train_dict, self.model_dict, **model_config_dict)
         if self.model_task == ModelLoader.SupportedTasks.BATCH_CORRECTION.value:
-            # Add 1 for batch token
-            copied_dict = deepcopy(self.task_train_dict)
-            copied_dict['seq_len'] += 1
-            model_config_dict['max_seq_len'] += 1
-            return BatchCorrection(copied_dict, **model_config_dict)
+            return BatchCorrection(self.task_train_dict, self.model_dict, **model_config_dict)
         
     
                         
@@ -168,8 +173,8 @@ class ModelLoader():
 class ScGPTModelWrapper(ABC):
 
     def __init__(self,
-                 task_training_dict, model_path,
-                 pad_value, vocab, config_dict, num_batches, max_seq_len, delta_config, batch_size, eval_batch_size,
+                 task_training_dict, config_dict, model_path,
+                 pad_value, vocab, num_batches, max_seq_len, delta_config, batch_size, eval_batch_size,
                  model_name="awesome_model", log_dir="cell_annotation_logs/", wandb_config=None,):
         self.logger = scgpt.logger
 
@@ -190,7 +195,7 @@ class ScGPTModelWrapper(ABC):
 
         self.vocab = vocab
         self.vocab.set_default_index(vocab["<pad>"])
-        self.pad_token = config_dict["pad_token"]
+        self.pad_token = task_training_dict["pad_token"]
         #self.criterion = nn.CrossEntropyLoss()
         #self.eps = EPS
         self.batch_size = batch_size
@@ -807,9 +812,10 @@ class ScGPTModelWrapper(ABC):
 class CellAnnotation(ScGPTModelWrapper):
     
     def __init__(self,
-                task_training_dict,
+                 task_training_dict,
+                 config_dict,
                  model_path,
-                 pad_value, vocab, config_dict, num_batches, num_celltypes, max_seq_len,
+                 pad_value, vocab, num_batches, num_celltypes, max_seq_len,
                  delta_config, batch_size, eval_batch_size,
                  model_name="awesome_model",
                  log_dir="cell_annotation_logs/", wandb_config=None):
@@ -818,10 +824,10 @@ class CellAnnotation(ScGPTModelWrapper):
         
         super().__init__(
                          task_training_dict=task_training_dict,
+                         config_dict=config_dict,
                          model_path=model_path,
                          pad_value=pad_value,
                          vocab=vocab, 
-                         config_dict=config_dict,
                          num_batches=num_batches,
                          max_seq_len=max_seq_len,
                          delta_config=delta_config, 
@@ -968,17 +974,17 @@ class CellAnnotation(ScGPTModelWrapper):
 
 class BatchCorrection(ScGPTModelWrapper):
 
-    def __init__(self, task_training_dict, model_path, pad_value, vocab, config_dict, 
+    def __init__(self, task_training_dict, config_dict, model_path, pad_value, vocab, 
                  num_batches, delta_config, batch_size, eval_batch_size, max_seq_len,
                  model_name="awesome_model",
                  log_dir="cell_annotation_logs/", wandb_config=None, num_celltypes=0):
         
         super().__init__(
                          task_training_dict=task_training_dict,
+                         config_dict=config_dict,
                          model_path=model_path,
                          pad_value=pad_value, 
                          vocab=vocab, 
-                         config_dict=config_dict,
                          num_batches=num_batches,
                          delta_config=delta_config,
                          batch_size=batch_size,

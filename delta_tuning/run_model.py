@@ -77,14 +77,14 @@ def preprocess_data(adata, preprocessor, vocab, batch_key=None):
     return adata[:, adata.var["id_in_vocab"] >= 0]
 
 
-def get_data_loaders(ds_loader, vocab, config_dict, test_data, n_hvg, model_task):
+def get_data_loaders(ds_loader, vocab, n_input_bins, test_data, n_hvg, model_task):
     adata_train, adata_test = ds_loader.get_train_test(test_data)
 
     # set up the preprocessor, use the args to config the workflow
     preprocessor = Preprocessor(
         use_key="X",
         normalize_total=0.0,
-        binning=config_dict["n_input_bins"],
+        binning=n_input_bins,
         result_binned_key=INPUT_LAYER,
         subset_hvg=n_hvg if n_hvg < adata_train.shape[1] else False,
         hvg_flavor="seurat"    # Assumes data is not raw
@@ -305,7 +305,6 @@ def main():
     args = parser.parse_args()
 
     model_loader = ModelLoader(args.model_task)
-    config_dict = model_loader.get_model_dict()
 
     supported_datasets = [ds.value for ds in load_ds.SupportedDatasets]
     if args.train_data not in supported_datasets:
@@ -314,11 +313,11 @@ def main():
     set_seed(args.seed)
 
     vocab = GeneVocab.from_file(VOCAB_PATH)
-    add_tokens_to_vocab(config_dict["pad_token"], vocab)
+    add_tokens_to_vocab(model_loader.get_pad_token(), vocab)
     ds_loader = load_ds.get_data_loader(args.train_data)
-    n_hvg = model_loader.get_seq_len()
-    adata_train, adata_test = get_data_loaders(ds_loader, vocab, config_dict, args.test_data, n_hvg=100, 
-                                               model_task=args.model_task)
+    n_hvg = model_loader.get_hvg()
+    adata_train, adata_test = get_data_loaders(ds_loader, vocab, model_loader.get_input_bins(),
+                                               args.test_data, n_hvg=n_hvg,  model_task=args.model_task)
     num_celltypes = ds_loader.get_num_celltypes()
     num_batches = ds_loader.get_num_batches()
 
@@ -343,17 +342,9 @@ def main():
         "task": args.model_task,
     }
 
-    if args.num_layers:
-        config_dict["nlayers"] = args.num_layers
-
-    if args.nlayers_cls:
-        config_dict["nlayers_cls"] = args.num_layers
-
     model_init_params = {
         "model_path": args.model,
-        "pad_value": config_dict["pad_value"],
         "vocab": vocab,
-        "config_dict": config_dict,
         "num_celltypes": num_celltypes,
         "num_batches": num_batches,
         "model_name": model_name,
@@ -361,19 +352,15 @@ def main():
         "eval_batch_size": args.batch_size,
         "delta_config": delta_config,
         "wandb_config": wandb_config,
+        "max_seq_len": model_loader.get_seq_len()
     }
-
-    if args.max_seq_len:
-        model_init_params['max_seq_len'] = args.max_seq_len
-    else:
-        model_init_params['max_seq_len'] = n_hvg
 
     if args.hyperparam_search_config:
         assert not args.inference, "Hyperparameter search cannot be run in inference mode."
         run_optuna_hyperparam_search(model_loader, model_init_params, adata_train, adata_test, delta_config,
                                      wandb_config, args.hyperparam_search_config, logging.getLogger())
     else:
-        task_model = model_loader.get_model(model_init_params)   #CellAnnotation(**model_init_params)
+        task_model = model_loader.get_model(model_init_params)
         if not args.inference:
             train_model(args,
                         adata_train,
