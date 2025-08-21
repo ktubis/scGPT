@@ -174,7 +174,7 @@ class ScGPTModelWrapper(ABC):
 
     def __init__(self,
                  task_training_dict, config_dict, model_path,
-                 pad_value, vocab, num_batches, max_seq_len, delta_config, batch_size, eval_batch_size,
+                 vocab, num_batches, max_seq_len, delta_config, batch_size, eval_batch_size,
                  model_name="awesome_model", log_dir="cell_annotation_logs/", wandb_config=None,):
         self.logger = scgpt.logger
 
@@ -209,7 +209,7 @@ class ScGPTModelWrapper(ABC):
         self.include_zero_gene = False
 
         # That's if input_embed_style in the config is "continuous"
-        self.pad_value = pad_value
+        self.pad_value = task_training_dict['pad_value']
 
         self.criterion = None
         self.eps = None
@@ -815,7 +815,7 @@ class CellAnnotation(ScGPTModelWrapper):
                  task_training_dict,
                  config_dict,
                  model_path,
-                 pad_value, vocab, num_batches, num_celltypes, max_seq_len,
+                 vocab, num_batches, num_celltypes, max_seq_len,
                  delta_config, batch_size, eval_batch_size,
                  model_name="awesome_model",
                  log_dir="cell_annotation_logs/", wandb_config=None):
@@ -826,7 +826,6 @@ class CellAnnotation(ScGPTModelWrapper):
                          task_training_dict=task_training_dict,
                          config_dict=config_dict,
                          model_path=model_path,
-                         pad_value=pad_value,
                          vocab=vocab, 
                          num_batches=num_batches,
                          max_seq_len=max_seq_len,
@@ -974,7 +973,7 @@ class CellAnnotation(ScGPTModelWrapper):
 
 class BatchCorrection(ScGPTModelWrapper):
 
-    def __init__(self, task_training_dict, config_dict, model_path, pad_value, vocab, 
+    def __init__(self, task_training_dict, config_dict, model_path, vocab, 
                  num_batches, delta_config, batch_size, eval_batch_size, max_seq_len,
                  model_name="awesome_model",
                  log_dir="cell_annotation_logs/", wandb_config=None, num_celltypes=0):
@@ -983,7 +982,6 @@ class BatchCorrection(ScGPTModelWrapper):
                          task_training_dict=task_training_dict,
                          config_dict=config_dict,
                          model_path=model_path,
-                         pad_value=pad_value, 
                          vocab=vocab, 
                          num_batches=num_batches,
                          delta_config=delta_config,
