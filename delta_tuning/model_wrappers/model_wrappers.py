@@ -148,9 +148,9 @@ class ModelLoader():
 
     def get_hvg(self):
         if self.model_task == ModelLoader.SupportedTasks.CELLTYPE_ANNOTATION:
-            return self.task_train_dict['seq_len']
+            return self.model_dict['seq_len']
         if self.model_task == ModelLoader.SupportedTasks.BATCH_CORRECTION:
-            return self.task_train_dict['seq_len'] - 1
+            return self.model_dict['seq_len'] - 1
     
     def get_input_bins(self):
         return self.task_train_dict['n_input_bins']
@@ -159,7 +159,7 @@ class ModelLoader():
         return self.task_train_dict['pad_token']
     
     def get_seq_len(self):
-        return self.task_train_dict['seq_len']
+        return self.model_dict['seq_len']
 
     def get_model(self, model_config_dict):
         if self.model_task == ModelLoader.SupportedTasks.CELLTYPE_ANNOTATION.value:
