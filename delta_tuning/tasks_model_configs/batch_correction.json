@@ -1,5 +1,5 @@
 {
-    "seq_len": 1200,
+    
     "dropout": 0.2,
     "do_mvc": true,
     "do_dab": true,
@@ -9,9 +9,10 @@
     "ecs_threshold": 0.8,
     "explicit_zero_prob": true,
     "pre_norm": false,
-    "d_model": 128,
-    "nhead": 4,
-    "d_hid": 128,
+    "pad_token": "<pad>",
+    "input_emb_style": "continuous",
+    "n_input_bins": 51,
+    "pad_value": -2,
 
     "mask_ratio": 0.4,
     "mask_value": -1

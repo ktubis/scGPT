@@ -1,0 +1,15 @@
+{
+    "dropout": 0.2,
+    "nlayers_cls": 3,
+    "do_mvc": false,
+    "do_dab": false,
+    "cell_emb_style": "cls",
+    "ecs_threshold": 0.0,
+    "mask_ratio": 0.0,
+    "mask_value": -1,
+    "domain_spec_batchnorm": false,
+    "pad_token": "<pad>",
+    "input_emb_style": "continuous",
+    "n_input_bins": 51,
+    "pad_value": -2
+}
