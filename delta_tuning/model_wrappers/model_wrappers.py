@@ -147,9 +147,9 @@ class ModelLoader():
             self.model_dict = json.load(f)
 
     def get_hvg(self):
-        if self.model_task == ModelLoader.SupportedTasks.CELLTYPE_ANNOTATION:
+        if self.model_task == ModelLoader.SupportedTasks.CELLTYPE_ANNOTATION.value:
             return self.model_dict['seq_len']
-        if self.model_task == ModelLoader.SupportedTasks.BATCH_CORRECTION:
+        if self.model_task == ModelLoader.SupportedTasks.BATCH_CORRECTION.value:
             return self.model_dict['seq_len'] - 1
     
     def get_input_bins(self):
