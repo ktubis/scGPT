@@ -46,6 +46,7 @@ LR_FINDER_LOG_DIR = "cell_annotation_logs/lr_finder/"
 FIND_LR_PERIOD = 600
 FIND_LR_GAMMA = 3
 TASKS_MODELS_CONFIG_DIR = "tasks_model_configs/"
+MODEL_CONFIG_DIR = "model_configs/"
 PREDICTIONS_DIR = "predictions/"
 INTERMEDIATE_EMBEDDINGS_DIR = "intermediate_embeddings/"
 CELL_EMBEDDINGS_DIR = "cell_embeddings/"
@@ -142,6 +143,11 @@ class ModelLoader():
         self.model_task = model_task
         with open(f"{TASKS_MODELS_CONFIG_DIR}{model_task}.json") as f:
             self.task_train_dict = json.load(f)
+        with open(f"{MODEL_CONFIG_DIR}{model_task}.json") as f:
+            self.model_dict = json.load(f)
+
+    def get_model_dict(self):
+        return self.model_dict
 
     def get_seq_len(self):
         return self.task_train_dict['seq_len']

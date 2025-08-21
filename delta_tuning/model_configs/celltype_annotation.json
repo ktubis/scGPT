@@ -1,0 +1,8 @@
+ 
+  {
+    "seq_len": 3001,
+    "nlayers": 12,
+    "nhead": 8,
+    "d_model": 512,
+    "d_hid": 512
+  }

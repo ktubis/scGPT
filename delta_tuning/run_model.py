@@ -305,14 +305,13 @@ def main():
     args = parser.parse_args()
 
     model_loader = ModelLoader(args.model_task)
+    config_dict = model_loader.get_model_dict()
 
     supported_datasets = [ds.value for ds in load_ds.SupportedDatasets]
     if args.train_data not in supported_datasets:
         raise ValueError("Name of the train dataset is not supported. Should be one of: ",
                          supported_datasets)
     set_seed(args.seed)
-    with open(args.model_config_path, "r") as f:
-        config_dict = json.load(f)
 
     vocab = GeneVocab.from_file(VOCAB_PATH)
     add_tokens_to_vocab(config_dict["pad_token"], vocab)
