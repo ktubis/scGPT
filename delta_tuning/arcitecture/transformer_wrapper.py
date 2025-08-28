@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from torch import Tensor
 from typing import Optional, Tuple
 import torch.nn.functional as F
 from torch.nn.init import constant_, xavier_uniform_
@@ -245,10 +246,10 @@ class CustomTransformerEncoder(nn.TransformerEncoder):
 
     def forward_layers(
             self,
-            src: nn.Tensor,
-            mask: Optional[nn.Tensor] = None,
-            src_key_padding_mask: Optional[nn.Tensor] = None,
-            is_causal: Optional[bool] = None) -> nn.Tensor:
+            src: Tensor,
+            mask: Optional[Tensor] = None,
+            src_key_padding_mask: Optional[Tensor] = None,
+            is_causal: Optional[bool] = None) -> Tensor:
         
         src_key_padding_mask = F._canonical_mask(
             mask=src_key_padding_mask,
