@@ -13,7 +13,7 @@ from tqdm import trange
 import json
 from torch.nn.modules import MultiheadAttention
 
-from delta_tuning.arcitecture.transformer_wrapper import CustomTransformerEncoderLayer, MultiheadAttentionDeconstructed
+from delta_tuning.arcitecture.transformer_wrapper import CustomTransformerEncoderLayer, MultiheadAttentionDeconstructed, CustomTransformerEncoder
 
 
 from .dsbn import DomainSpecificBatchNorm1d
@@ -111,7 +111,7 @@ class TransformerModel(nn.Module):
         encoder_layers = CustomTransformerEncoderLayer(
             d_model, nhead, d_hid, dropout, batch_first=True, attention_cls=MultiheadAttentionDeconstructed,
         )
-        self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
+        self.transformer_encoder = CustomTransformerEncoder(encoder_layers, nlayers)
 
         self.decoder = ExprDecoder(
             d_model,
@@ -204,11 +204,9 @@ class TransformerModel(nn.Module):
             total_embs = self.bn(total_embs.permute(0, 2, 1)).permute(0, 2, 1)
 
         if get_intermediate_outputs:
-            outputs = []
-            for i, layer in enumerate(self.transformer_encoder.layers):
-                total_embs = layer(total_embs)
-                outputs.append(total_embs.clone().detach())
-            return outputs
+            output = self.transformer_encoder.forward_layers(
+                total_embs, src_key_padding_mask=src_key_padding_mask
+                )
         else:
             output = self.transformer_encoder(
                 total_embs, src_key_padding_mask=src_key_padding_mask
