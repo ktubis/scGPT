@@ -125,7 +125,9 @@ class CellAnnotationDataloader(DataLoader):
     def __init__(self):
         super().__init__()
 
-    def get_test_data(self):
+    def get_test_data(self, celltype_list=None):
+        if celltype_list is not None:
+            return self.test_data[self.test_data.obs["celltype"].isin(celltype_list)]
         return self.test_data
     
 class BatchCorrectionDataLoader(DataLoader):

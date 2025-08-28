@@ -302,6 +302,10 @@ def main():
                         "Overrides the number of layers specified in the config.")
     parser.add_argument("--nlayers_cls", type=int, help="The number of layers in the cls classifier."\
                         "Overrides the number of layers specified in the config.")
+    parser.add_argument("--get_gene_embs", action='store_true', help="For get_intermediate_embeddings, set to true if you want to get the average" \
+                        "gene embeddings rather than cell embeddings")
+    parser.add_argument("--celltype_list", type=str, nargs="+", default=[], help="The celltypes on which to run inference." \
+                        "If not specified, will run inference on all the cells.")
     args = parser.parse_args()
 
     model_loader = ModelLoader(args.model_task)
@@ -380,9 +384,15 @@ def main():
             }
             if args.get_intermediate_outputs:
                 intermediate_embeddings_file = f"intermediate_embeddings/{model_name}_{args.train_data}_{args.seed}"
+                if args.get_gene_embs:
+                    intermediate_embeddings_file += "_genes"
+                    if args.celltype_list:
+                        cell_list = "_".join(args.celltype_list)
+                        intermediate_embeddings_file += ("_" + cell_list)
                 test_kwargs["intermediate_embeddings_file"] = intermediate_embeddings_file
 
-            adata_test = ds_loader.get_test_data()
+            test_kwargs['get_gene_embs'] = args.get_gene_embs
+            adata_test = ds_loader.get_test_data(args.celltype_list)
             task_model.test(adata_test, **test_kwargs)
     print("HERE")
     exit(0)

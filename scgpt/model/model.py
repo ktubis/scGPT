@@ -239,6 +239,14 @@ class TransformerModel(nn.Module):
             cell_emb = F.normalize(cell_emb, p=2, dim=1)  # (batch, embsize)
 
         return cell_emb
+    
+    def _get_gene_emb_from_layer(
+            self, layer_output
+    ) -> Tensor:
+        """
+        Returns the sum of the gene embedding across the batch.
+        """
+        return layer_output[:, 1:, :].sum(dim=0)  # (num_genes, embsize)
 
     def _check_batch_labels(self, batch_labels: Tensor) -> None:
         if self.use_batch_labels or self.domain_spec_batchnorm:
@@ -342,7 +350,8 @@ class TransformerModel(nn.Module):
         do_sample: bool = False,
         attention_mask = None,
         inputs_embeds_after_encoder: Optional[Tensor] = None,
-        get_intermediate_outputs=False
+        get_intermediate_outputs=False,
+        get_gene_embs=False,
     ) -> Mapping[str, Tensor]:
         """
         Args:
@@ -372,10 +381,15 @@ class TransformerModel(nn.Module):
             # transformer layers in the form of a list, so if there are 12 transformer layers the list
             # will be of length 12.
             intermediate_outputs = transformer_output
-            cell_embeds = []
+            if get_gene_embs:
+                embs_func = self._get_gene_emb_from_layer
+            else:
+                embs_func = self._get_cell_emb_from_layer
+
+            embeds = []
             for output in intermediate_outputs:
-                cell_embeds.append(self._get_cell_emb_from_layer(output, inputs_embeds))
-            return cell_embeds
+                embeds.append(embs_func(output))
+            return embeds
         
         if self.use_batch_labels:
             batch_emb = self.batch_encoder(batch_labels)  # (batch, embsize)

@@ -381,7 +381,7 @@ class ScGPTModelWrapper(ABC):
 
     
     def _evaluate(self, loader: DataLoader, return_raw: bool = False, return_embs=False,
-                  get_intermediate_outputs=False) -> float:
+                  get_intermediate_outputs=False, get_gene_embs=False) -> float:
         """
         Evaluate the model on the evaluation data.
         """
@@ -395,30 +395,39 @@ class ScGPTModelWrapper(ABC):
         with torch.no_grad():
             for batch_data in loader:
                 input_gene_ids = batch_data["gene_ids"].to(self.device)
+                total_num += len(input_gene_ids)
 
                 with torch.cuda.amp.autocast(enabled=True):
                     forward_input_dict = self.get_forward_params_for_evaluation(batch_data)
                     forward_input_dict["get_intermediate_outputs"] = get_intermediate_outputs
+                    forward_input_dict["get_gene_embs"] = get_gene_embs
                     output = self.model(
                         **forward_input_dict
                     )
 
                 if get_intermediate_outputs:
                     for i in range(self.model.nlayers):
-                        intermediate_embeddings[i].append(output[i].cpu().numpy())
+                        if get_gene_embs:
+                            intermediate_embeddings[i] += output[i].cpu().numpy()
+                        else:
+                            intermediate_embeddings[i].append(output[i].cpu().numpy())
                 else:
                     total_batch_loss, total_batch_error = self.calc_eval_metrics(output, batch_data)
                     total_loss += total_batch_loss
                     total_error += total_batch_error
                     if return_raw:
                         predictions.append(self.get_predictions_from_model_output(output))
-                    total_num += len(input_gene_ids)
                     if return_embs:
                         embeddings.append(output["cell_emb"].cpu().numpy())
 
         if get_intermediate_outputs:
             for i in range(len(intermediate_embeddings)):
-                intermediate_embeddings[i] = np.concatenate(intermediate_embeddings[i], axis=0)
+                if get_gene_embs:
+                    # Gene embeddings were summed across the batches, now to get the mean we need
+                    # to divide them.
+                    intermediate_embeddings[i] /= total_num
+                else:
+                    intermediate_embeddings[i] = np.concatenate(intermediate_embeddings[i], axis=0)
             return intermediate_embeddings
 
 
@@ -436,7 +445,7 @@ class ScGPTModelWrapper(ABC):
 
 
     def test(self, adata: DataLoader, intermediate_embeddings_file=None,
-             predictions_file=None, embeddings_file=None):
+             predictions_file=None, embeddings_file=None, get_gene_embs=False):
         celltypes_labels, batch_ids, tokenized_test = self.prepare_data_for_test(adata)
 
         input_values_test = random_mask_value(
@@ -464,13 +473,17 @@ class ScGPTModelWrapper(ABC):
         )
 
         if intermediate_embeddings_file:
-            cell_embeddings = self._evaluate(
+            embeddings = self._evaluate(
                 loader=test_loader,
                 get_intermediate_outputs=True,
+                get_gene_embs=get_gene_embs,
             )
-            embeddings_adata = ad.AnnData(obs=adata.obs.copy())
-            for i in range(len(cell_embeddings)):
-                embeddings_adata.obsm[f"transformer_layer_${i}"] = cell_embeddings[i]
+            if get_gene_embs:
+                embeddings_adata = ad.AnnData(obs=adata.var.copy())
+            else:
+                embeddings_adata = ad.AnnData(obs=adata.obs.copy())
+            for i in range(len(embeddings)):
+                embeddings_adata.obsm[f"transformer_layer_${i}"] = embeddings[i]
             embeddings_adata.write_h5ad(intermediate_embeddings_file)
             return
 
@@ -498,7 +511,7 @@ class ScGPTModelWrapper(ABC):
                 predictions_df["predicted_celltype_id"] = test_eval_dict["predictions"]         
             if save_embeddings:
                 predictions_adata = ad.AnnData(obs=predictions_df)
-                predictions_adata.obsm["X_emb"] = cell_embeddings
+                predictions_adata.obsm["X_emb"] = embeddings
                 predictions_adata.write_h5ad(embeddings_file)
                     
         return test_metrics
