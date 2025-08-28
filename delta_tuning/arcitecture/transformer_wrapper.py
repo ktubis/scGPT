@@ -354,7 +354,7 @@ class CustomTransformerEncoder(nn.TransformerEncoder):
         outputs = []
         for i, mod in enumerate(self.layers):
             output = mod(output, src_mask=mask, is_causal=is_causal, src_key_padding_mask=src_key_padding_mask_for_layers)
-            outputs[i] = output.clone().detach()
+            outputs.append(output.clone().detach())
 
         if convert_to_nested:
             for i in range(len(outputs)):
