@@ -120,26 +120,25 @@ class DataLoader(ABC):
     def get_train_test(self, test_ds_name=None):
         return self.train_data, self.test_data
     
-class CellAnnotationDataloader(DataLoader):
-
-    def __init__(self):
-        super().__init__()
-
     def get_test_data(self, celltype_list=None):
         if celltype_list:
             return self.test_data[self.test_data.obs["celltype"].isin(celltype_list)]
         return self.test_data
     
-class BatchCorrectionDataLoader(DataLoader):
+class CellAnnotationDataloader(DataLoader):
 
     def __init__(self):
         super().__init__()
     
+class BatchCorrectionDataLoader(DataLoader):
+
+    def __init__(self):
+        super().__init__()
+"""
     def get_test_data(self, celltype_list=None):
         if celltype_list:
             return self.train_data[self.train_data.obs["celltype"].isin(celltype_list)]
-        return self.train_data
-        
+        return self.train_data"""
 
 class FilteredPancreas(CellAnnotationDataloader):
     def __init__(self):
