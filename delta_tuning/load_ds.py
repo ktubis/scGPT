@@ -28,6 +28,7 @@ class SupportedDatasets(Enum):
     PERI_CORTEX = "peri_cortex"
     PC_BATCH = "pc_batch"
     CC_BATCH = "cc_batch"
+    KIM_LUNG = "kim_lung"
 
     
 def get_data_loader(ds_name):
@@ -68,6 +69,8 @@ def get_data_loader(ds_name):
         return DownsampledInt()
     if ds_name == SupportedDatasets.DOWNSAMPLED_CC.value:
         return DownsampledCC()
+    if ds_name == SupportedDatasets.KIM_LUNG.value:
+        return KimLung()
     raise ValueError("Invalid dataset name. Supported names are: ",
                      [ds.value for ds in SupportedDatasets])
 
@@ -408,8 +411,23 @@ class PCForBatch(BatchCorrectionDataLoader):
         self.__class__.preprocess_data(self.train_data)
         self.__class__.preprocess_data(self.test_data)
         self.add_celltype_id()
-        self.add_celltype_id()
 
+class KimLung(BatchCorrectionDataLoader):
+    @staticmethod
+    def preprocess_data(adata):
+        """
+        Preprocess the AnnData object by renaming columns and ensuring categorical types.
+        """
+        adata.obs["batch_id"] = adata.obs["sample"].astype("category").cat.codes
+        adata.obs["str_batch"] = adata.obs["batch_id"].astype(str)
+
+    def __init__(self):
+        self.train_path = "data/batch_correction/kim_lung.h5ad"
+        self.test_path = "data/batch_correction/kim_lung.h5ad"
+        self.read_data()
+        self.__class__.preprocess_data(self.train_data)
+        self.__class__.preprocess_data(self.test_data)
+        self.add_celltype_id()
 
 class PancreaticDataset(DataLoader):
 
