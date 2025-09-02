@@ -135,9 +135,10 @@ class BatchCorrectionDataLoader(DataLoader):
     def __init__(self):
         super().__init__()
     
-    def get_test_data(self):
-        return self.train_data[self.train_data.obs["batch_id"].argsort()].copy()
-
+    def get_test_data(self, celltype_list=None):
+        if celltype_list is not None:
+            return self.train_data[self.train_data.obs["celltype"].isin(celltype_list)]
+        return self.train_data
         
 
 class FilteredPancreas(CellAnnotationDataloader):
