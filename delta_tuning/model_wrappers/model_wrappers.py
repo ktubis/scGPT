@@ -135,7 +135,7 @@ class ModelLoader():
         CELLTYPE_ANNOTATION = "celltype_annotation"
         BATCH_CORRECTION = "batch_correction"
 
-    def __init__(self, model_task):
+    def __init__(self, model_task, small_model=False):
         supported = [task.value for task in ModelLoader.SupportedTasks]
         if model_task not in supported:
             raise ValueError(f"Unsupported task '{model_task}'. \
@@ -143,7 +143,11 @@ class ModelLoader():
         self.model_task = model_task
         with open(f"{TASKS_MODELS_CONFIG_DIR}{model_task}.json") as f:
             self.task_train_dict = json.load(f)
-        with open(f"{MODEL_CONFIG_DIR}{model_task}.json") as f:
+        if small_model:
+            model_config_file = f"{MODEL_CONFIG_DIR}cpu_model.json"
+        else:
+            model_config_file = f"{MODEL_CONFIG_DIR}{model_task}.json"
+        with open(model_config_file) as f:
             self.model_dict = json.load(f)
 
     def get_hvg(self):
@@ -391,6 +395,7 @@ class ScGPTModelWrapper(ABC):
         total_num = 0
         predictions = []
         intermediate_embeddings = [[] for _ in range(self.model.nlayers)]
+        intermediate_gene_embeddings = [np.zeros(())]
         embeddings = []
         with torch.no_grad():
             for batch_data in loader:
@@ -406,7 +411,7 @@ class ScGPTModelWrapper(ABC):
                     )
 
                 if get_intermediate_outputs:
-                    for i in range(self.model.nlayers):
+                    for i in range(self.model.nlayers + 1):
                         if get_gene_embs:
                             intermediate_embeddings[i] += output[i].cpu().numpy()
                         else:

@@ -212,7 +212,7 @@ class TransformerModel(nn.Module):
                 total_embs, src_key_padding_mask=src_key_padding_mask
             )
 
-        return output  # (batch, seq_len, embsize)
+        return output, inputs_embeds  # (batch, seq_len, embsize)
 
     def _get_cell_emb_from_layer(
         self, layer_output: Tensor, weights: Tensor = None
@@ -372,7 +372,7 @@ class TransformerModel(nn.Module):
         Returns:
             dict of output Tensors.
         """
-        transformer_output = self._encode(
+        transformer_output, transformer_inputs_embeds = self._encode(
             input_ids, inputs_embeds, src_key_padding_mask, batch_labels, inputs_embeds_after_encoder,
             get_intermediate_outputs
         )
@@ -387,6 +387,7 @@ class TransformerModel(nn.Module):
                 embs_func = self._get_cell_emb_from_layer
 
             embeds = []
+            embeds.append(transformer_inputs_embeds)
             for output in intermediate_outputs:
                 embeds.append(embs_func(output))
             return embeds
@@ -422,7 +423,7 @@ class TransformerModel(nn.Module):
             output["cls_output"] = self.cls_decoder(cell_emb)  # (batch, n_cls)
         if CCE:
             cell1 = cell_emb
-            transformer_output2 = self._encode(
+            transformer_output2, _ = self._encode(
                 input_ids, inputs_embeds, src_key_padding_mask, batch_labels
             )
             cell2 = self._get_cell_emb_from_layer(transformer_output2)
@@ -526,7 +527,7 @@ class TransformerModel(nn.Module):
 
         print("self.batch_size", self.batch_size)
         for i in trange(0, N, self.batch_size):
-            raw_output = self._encode(
+            raw_output, _ = self._encode(
                 input_ids[i : i + self.batch_size].to(device),
                 inputs_embeds[i : i + self.batch_size].to(device),
                 src_key_padding_mask[i : i + self.batch_size].to(device),
