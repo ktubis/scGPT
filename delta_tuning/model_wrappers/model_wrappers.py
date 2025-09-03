@@ -171,9 +171,6 @@ class ModelLoader():
         if self.model_task == ModelLoader.SupportedTasks.BATCH_CORRECTION.value:
             return BatchCorrection(self.task_train_dict, self.model_dict, **model_config_dict)
         
-    def test_mode(self):
-        self.model_task.mask_ratio = 0.0
-        
     
                         
 
@@ -259,6 +256,9 @@ class ScGPTModelWrapper(ABC):
     @abstractmethod
     def calc_test_metrics(self, test_results_dict):
         pass
+
+    def test_mode(self):
+        self.mask_ratio = 0.0
 
     def load_model(self, model_path):
         print("Error loading model, trying to load only matching parameters")
