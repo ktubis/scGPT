@@ -394,7 +394,7 @@ class ScGPTModelWrapper(ABC):
         total_error = 0.0
         total_num = 0
         predictions = []
-        intermediate_embeddings = [[] for _ in range(self.model.nlayers)]
+        intermediate_embeddings = [[] for _ in range(self.model.nlayers + 1)]
         intermediate_gene_embeddings = [np.zeros(())]
         embeddings = []
         with torch.no_grad():
