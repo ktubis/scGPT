@@ -387,7 +387,7 @@ class TransformerModel(nn.Module):
                 embs_func = self._get_cell_emb_from_layer
 
             embeds = []
-            embeds.append(transformer_inputs_embeds)
+            embeds.append(embs_func(transformer_inputs_embeds))
             for output in intermediate_outputs:
                 embeds.append(embs_func(output))
             return embeds
