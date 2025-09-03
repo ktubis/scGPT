@@ -171,6 +171,9 @@ class ModelLoader():
         if self.model_task == ModelLoader.SupportedTasks.BATCH_CORRECTION.value:
             return BatchCorrection(self.task_train_dict, self.model_dict, **model_config_dict)
         
+    def test_mode(self):
+        self.model_task.mask_ratio = 0.0
+        
     
                         
 

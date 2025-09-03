@@ -279,7 +279,7 @@ def train_model(args, adata_train, adata_test, task_model, delta_config, wandb_c
 def main():
     parser = argparse.ArgumentParser(description="Cell Annotation Model")
     parser.add_argument("--model_task", type=str, default="celltype_annotation")
-    parser.add_argument("--model_config_path", type=str, default="model_configs/scgpt_pretrained_model.json", help="Path to the model config file")
+    parser.add_argument("--small_model", action='store_true', help="Whether to load a small model to train it locally.")
     parser.add_argument("--model", type=str, default=None, help="Path to the pretrained model to load. Must match the model config file. If None, will initialize a new model.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--test_data", type=str, default="Muraro", help="Which dataset to use as the test data, only for the Pancreatic dataset. Must be one of: Baron_Human, Muraro, Segerstolpe, Xin")
@@ -306,6 +306,7 @@ def main():
                         "gene embeddings rather than cell embeddings")
     parser.add_argument("--celltype_list", type=str, nargs="+", default=[], help="The celltypes on which to run inference." \
                         "If not specified, will run inference on all the cells.")
+
     args = parser.parse_args()
 
     model_loader = ModelLoader(args.model_task)
@@ -375,6 +376,7 @@ def main():
                         warm_up_percentage=args.warm_up_percentage)
             test_kwargs = {}
         else:
+            task_model.test_mode()
             task_model.need_embeddings = True
             embeddings_file = f"cell_embeddings/{model_name}_{args.train_data}_{args.seed}"
             predictions_file = f"predictions/{model_name}_{args.train_data}_{args.seed}"
@@ -392,7 +394,7 @@ def main():
                 test_kwargs["intermediate_embeddings_file"] = intermediate_embeddings_file
 
             test_kwargs['get_gene_embs'] = args.get_gene_embs
-            adata_test = ds_loader.get_test_data(args.celltype_list)
+            #adata_test = ds_loader.get_test_data(args.celltype_list)
             task_model.test(adata_test, **test_kwargs)
     print("HERE")
     exit(0)
