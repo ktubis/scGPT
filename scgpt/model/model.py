@@ -212,7 +212,7 @@ class TransformerModel(nn.Module):
                 total_embs, src_key_padding_mask=src_key_padding_mask
             )
 
-        return output, inputs_embeds  # (batch, seq_len, embsize)
+        return output, total_embs  # (batch, seq_len, embsize)
 
     def _get_cell_emb_from_layer(
         self, layer_output: Tensor, weights: Tensor = None
