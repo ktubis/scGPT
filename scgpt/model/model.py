@@ -12,6 +12,8 @@ from torch.distributions import Bernoulli
 from tqdm import trange
 import json
 from torch.nn.modules import MultiheadAttention
+import anndata as ad
+import scanpy as sc
 
 from delta_tuning.arcitecture.transformer_wrapper import CustomTransformerEncoderLayer, MultiheadAttentionDeconstructed, CustomTransformerEncoder
 
@@ -215,7 +217,7 @@ class TransformerModel(nn.Module):
         return output, total_embs  # (batch, seq_len, embsize)
 
     def _get_cell_emb_from_layer(
-        self, layer_output: Tensor, weights: Tensor = None
+        self, layer_output: Tensor, weights: Tensor = None, emb_style=None
     ) -> Tensor:
         """
         Args:
@@ -226,11 +228,13 @@ class TransformerModel(nn.Module):
         Returns:
             :obj:`Tensor`: shape (batch, embsize)
         """
-        if self.cell_emb_style == "cls":
+        if emb_style is None:
+            emb_style = self.cell_emb_style
+        if emb_style == "cls":
             cell_emb = layer_output[:, 0, :]  # (batch, embsize)
-        elif self.cell_emb_style == "avg-pool":
+        elif emb_style == "avg-pool":
             cell_emb = torch.mean(layer_output, dim=1)
-        elif self.cell_emb_style == "w-pool":
+        elif emb_style == "w-pool":
             if weights is None:
                 raise ValueError("weights is required when cell_emb_style is w-pool")
             if weights.dim() != 2:
@@ -387,7 +391,7 @@ class TransformerModel(nn.Module):
                 embs_func = self._get_cell_emb_from_layer
 
             embeds = []
-            embeds.append(embs_func(transformer_inputs_embeds))
+            embeds.append(embs_func(transformer_inputs_embeds, emb_style="avg-pool"))
             for output in intermediate_outputs:
                 embeds.append(embs_func(output))
             return embeds
