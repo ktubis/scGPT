@@ -308,8 +308,7 @@ def main():
                         "If not specified, will run inference on all the cells.")
 
     args = parser.parse_args()
-
-    model_loader = ModelLoader(args.model_task)
+    model_loader = ModelLoader(args.model_task, args.small_model)
 
     supported_datasets = [ds.value for ds in load_ds.SupportedDatasets]
     if args.train_data not in supported_datasets:

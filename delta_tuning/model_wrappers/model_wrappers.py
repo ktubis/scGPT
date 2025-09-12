@@ -167,9 +167,9 @@ class ModelLoader():
 
     def get_model(self, model_config_dict):
         if self.model_task == ModelLoader.SupportedTasks.CELLTYPE_ANNOTATION.value:
-            return CellAnnotation(self.task_train_dict, self.model_dict, **model_config_dict)
+            return CellAnnotation(self.task_train_dict.copy(), self.model_dict.copy(), **model_config_dict)
         if self.model_task == ModelLoader.SupportedTasks.BATCH_CORRECTION.value:
-            return BatchCorrection(self.task_train_dict, self.model_dict, **model_config_dict)
+            return BatchCorrection(self.task_train_dict.copy(), self.model_dict.copy(), **model_config_dict)
         
     
                         
@@ -398,7 +398,6 @@ class ScGPTModelWrapper(ABC):
         total_num = 0
         predictions = []
         intermediate_embeddings = [[] for _ in range(self.model.nlayers + 1)]
-        intermediate_gene_embeddings = [np.zeros(())]
         embeddings = []
         with torch.no_grad():
             for batch_data in loader:
@@ -414,10 +413,22 @@ class ScGPTModelWrapper(ABC):
                     )
 
                 if get_intermediate_outputs:
-                    for i in range(self.model.nlayers + 1):
-                        if get_gene_embs:
-                            intermediate_embeddings[i] += output[i].cpu().numpy()
+                    if get_gene_embs:
+                        # For the first batch
+                        if len(intermediate_embeddings[0]) == 0:
+                            # output is a list of length num_layers + 1,
+                            # and each element stores a tensor of size (num_genes * 512),
+                            # of SUMS of the genes per batch.
+                            for i in range(self.model.nlayers + 1):
+                                intermediate_embeddings[i] = output[i].cpu().numpy()
                         else:
+                            for i in range(self.model.nlayers + 1):
+                                intermediate_embeddings[i] += output[i].cpu().numpy()
+
+                    # Get the cell embeddings
+                    else:
+                        # Add 1 for the embeddings after model._encoder
+                        for i in range(self.model.nlayers + 1):
                             intermediate_embeddings[i].append(output[i].cpu().numpy())
                 else:
                     total_batch_loss, total_batch_error = self.calc_eval_metrics(output, batch_data)
@@ -454,6 +465,8 @@ class ScGPTModelWrapper(ABC):
 
     def test(self, adata: DataLoader, intermediate_embeddings_file=None,
              predictions_file=None, embeddings_file=None, get_gene_embs=False):
+        if get_gene_embs:
+            self.include_zero_gene = True
         celltypes_labels, batch_ids, tokenized_test = self.prepare_data_for_test(adata)
 
         input_values_test = random_mask_value(

@@ -384,16 +384,23 @@ class TransformerModel(nn.Module):
             # in case get_intermediate_outputs, self_encode returns the intermediate outputs of all the
             # transformer layers in the form of a list, so if there are 12 transformer layers the list
             # will be of length 12.
+
             intermediate_outputs = transformer_output
+
             if get_gene_embs:
-                embs_func = self._get_gene_emb_from_layer
-            else:
-                embs_func = self._get_cell_emb_from_layer
+                embeds = []
+                embeds.append(self._get_gene_emb_from_layer(transformer_inputs_embeds))
+                for output in intermediate_outputs:
+                    embeds.append(self._get_gene_emb_from_layer(output))
+                return embeds
 
             embeds = []
-            embeds.append(embs_func(transformer_inputs_embeds, emb_style="avg-pool"))
+            # Since the cell embedding after self._encoder is the same for all cells (the embedding
+            # of the cell token), for the cell embedding after self_encoder take the average of the gene
+            # embeddings.
+            embeds.append(self._get_cell_emb_from_layer(transformer_inputs_embeds, emb="avg-pool"))
             for output in intermediate_outputs:
-                embeds.append(embs_func(output))
+                embeds.append(self._get_cell_emb_from_layer(output))
             return embeds
         
         if self.use_batch_labels:
