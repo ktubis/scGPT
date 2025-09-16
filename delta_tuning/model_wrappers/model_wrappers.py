@@ -1,6 +1,7 @@
 import os
 import sys
 import numpy as np
+import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 from torch import nn
 from scipy.sparse import issparse
@@ -388,7 +389,7 @@ class ScGPTModelWrapper(ABC):
 
     
     def _evaluate(self, loader: DataLoader, return_raw: bool = False, return_embs=False,
-                  get_intermediate_outputs=False, get_gene_embs=False) -> float:
+                  get_intermediate_outputs=False, get_gene_embs=False, get_attn_maps=False) -> float:
         """
         Evaluate the model on the evaluation data.
         """
@@ -398,6 +399,12 @@ class ScGPTModelWrapper(ABC):
         total_num = 0
         predictions = []
         intermediate_embeddings = [[] for _ in range(self.model.nlayers + 1)]
+        # avg_attention_maps holds the average attention for each layer across the entire
+        # test dataset.
+        avg_attention_maps = [[] for _ in range(self.model.nlayers)]
+        # cell_attention_maps holds the attention between the cell and all the genes,
+        # for each cell in the dataset individually.
+        cell_attention_maps = [[] for _ in range(self.model.nlayers)]
         embeddings = []
         with torch.no_grad():
             for batch_data in loader:
@@ -408,6 +415,7 @@ class ScGPTModelWrapper(ABC):
                     forward_input_dict = self.get_forward_params_for_evaluation(batch_data)
                     forward_input_dict["get_intermediate_outputs"] = get_intermediate_outputs
                     forward_input_dict["get_gene_embs"] = get_gene_embs
+                    forward_input_dict["get_attention_maps"] = get_attn_maps
                     output = self.model(
                         **forward_input_dict
                     )
@@ -430,6 +438,14 @@ class ScGPTModelWrapper(ABC):
                         # Add 1 for the embeddings after model._encoder
                         for i in range(self.model.nlayers + 1):
                             intermediate_embeddings[i].append(output[i].cpu().numpy())
+                elif get_attn_maps:
+                    for i in range(self.model.nlayers):
+                        if len(avg_attention_maps[i]) == 0:
+                                avg_attention_maps[i] = np.sum(output[i].cpu().numpy(), axis=0)
+                        else:
+                            avg_attention_maps[i] += np.sum(output[i].cpu().numpy(), axis=0)
+                        # get the attention of the <cls>
+                        cell_attention_maps[i].append(output[i][:, 0, :].cpu().numpy()) 
                 else:
                     total_batch_loss, total_batch_error = self.calc_eval_metrics(output, batch_data)
                     total_loss += total_batch_loss
@@ -448,6 +464,12 @@ class ScGPTModelWrapper(ABC):
                 else:
                     intermediate_embeddings[i] = np.concatenate(intermediate_embeddings[i], axis=0)
             return intermediate_embeddings
+        
+        if get_attn_maps:
+            for i in range(self.model.nlayers):
+                avg_attention_maps[i] /= total_num
+                cell_attention_maps[i] = np.concatenate(cell_attention_maps[i], axis=0)
+            return avg_attention_maps, cell_attention_maps
 
 
         eval_dict = {}
@@ -464,9 +486,9 @@ class ScGPTModelWrapper(ABC):
 
 
     def test(self, adata: DataLoader, intermediate_embeddings_file=None,
-             predictions_file=None, embeddings_file=None, get_gene_embs=False):
-        if get_gene_embs:
-            self.include_zero_gene = True
+             predictions_file=None, embeddings_file=None, get_gene_embs=False,
+             attention_maps_file=None):
+        self.include_zero_gene = True
         celltypes_labels, batch_ids, tokenized_test = self.prepare_data_for_test(adata)
 
         input_values_test = random_mask_value(
@@ -504,8 +526,30 @@ class ScGPTModelWrapper(ABC):
             else:
                 embeddings_adata = ad.AnnData(obs=adata.obs.copy())
             for i in range(len(embeddings)):
-                embeddings_adata.obsm[f"transformer_layer_${i}"] = embeddings[i]
+                embeddings_adata.obsm[f"transformer_layer_{i}"] = embeddings[i]
             embeddings_adata.write_h5ad(intermediate_embeddings_file)
+            return
+        
+        if attention_maps_file:
+            avg_attn_maps, cell_attn_maps = self._evaluate(
+                loader=test_loader,
+                get_intermediate_outputs=False,
+                get_attn_maps=True
+            )
+            var_with_cls = adata.var.copy()
+            if "highly_variable" in var_with_cls:
+                var_with_cls.drop(columns=["highly_variable"], inplace=True)
+            cls_row = pd.DataFrame(index=['cls'])
+            var_with_cls = pd.concat([cls_row, var_with_cls])
+            avg_attn_adata = ad.AnnData(obs=var_with_cls)
+            cell_attn_adata = ad.AnnData(obs=adata.obs.copy(), var=var_with_cls)
+            for i in range(self.model.nlayers):
+                avg_attn_adata.obsm[f"transformer_layer_{i}"] = avg_attn_maps[i]
+                cell_attn_adata.obsm[f"transformer_layer_{i}"] = cell_attn_maps[i]
+            avg_attn_file = attention_maps_file + "_avg.h5ad"
+            cell_attn_file = attention_maps_file + "_cell.h5ad"
+            avg_attn_adata.write_h5ad(avg_attn_file)
+            cell_attn_adata.write_h5ad(cell_attn_file)
             return
 
         save_predictions = predictions_file and self.need_predictions
@@ -736,6 +780,8 @@ class ScGPTModelWrapper(ABC):
             append_cls=True,  # append <cls> token at the beginning
             include_zero_gene=self.include_zero_gene
         )
+        print("max len:", self.max_seq_len)
+        print("after tokenized:", tokenized_all['genes'].shape)
 
         return celltypes_labels, batch_ids, tokenized_all
 

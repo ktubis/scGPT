@@ -165,7 +165,9 @@ class TransformerModel(nn.Module):
         src_key_padding_mask: Tensor,
         batch_labels: Optional[Tensor] = None,  # (batch,)
         inputs_embeds_after_encoder: Optional[Tensor] = None,
-        get_intermediate_outputs = False
+        get_intermediate_outputs = False,
+        get_attention_maps = False,
+        average_heads = True
     ) -> Tensor:
         self._check_batch_labels(batch_labels)
 
@@ -205,16 +207,17 @@ class TransformerModel(nn.Module):
         elif getattr(self, "bn", None) is not None:
             total_embs = self.bn(total_embs.permute(0, 2, 1)).permute(0, 2, 1)
 
-        if get_intermediate_outputs:
-            output = self.transformer_encoder.forward_layers(
-                total_embs, src_key_padding_mask=src_key_padding_mask
-                )
+        if (get_intermediate_outputs or get_attention_maps):
+            output, attn_maps = self.transformer_encoder.forward_layers(
+                total_embs, src_key_padding_mask=src_key_padding_mask,
+                get_attn_weights=get_attention_maps, average_heads=average_heads,
+            )
         else:
             output = self.transformer_encoder(
                 total_embs, src_key_padding_mask=src_key_padding_mask
             )
 
-        return output, total_embs  # (batch, seq_len, embsize)
+        return output, total_embs, attn_maps  # (batch, seq_len, embsize)
 
     def _get_cell_emb_from_layer(
         self, layer_output: Tensor, weights: Tensor = None, emb_style=None
@@ -356,6 +359,8 @@ class TransformerModel(nn.Module):
         inputs_embeds_after_encoder: Optional[Tensor] = None,
         get_intermediate_outputs=False,
         get_gene_embs=False,
+        get_attention_maps = False,
+        average_heads = True,
     ) -> Mapping[str, Tensor]:
         """
         Args:
@@ -376,10 +381,13 @@ class TransformerModel(nn.Module):
         Returns:
             dict of output Tensors.
         """
-        transformer_output, transformer_inputs_embeds = self._encode(
+        transformer_output, transformer_inputs_embeds, attention_maps = self._encode(
             input_ids, inputs_embeds, src_key_padding_mask, batch_labels, inputs_embeds_after_encoder,
-            get_intermediate_outputs
+            get_intermediate_outputs, get_attention_maps=get_attention_maps, average_heads=average_heads
         )
+        if get_attention_maps:
+            return attention_maps
+        
         if get_intermediate_outputs:
             # in case get_intermediate_outputs, self_encode returns the intermediate outputs of all the
             # transformer layers in the form of a list, so if there are 12 transformer layers the list
@@ -434,7 +442,7 @@ class TransformerModel(nn.Module):
             output["cls_output"] = self.cls_decoder(cell_emb)  # (batch, n_cls)
         if CCE:
             cell1 = cell_emb
-            transformer_output2, _ = self._encode(
+            transformer_output2, _, _ = self._encode(
                 input_ids, inputs_embeds, src_key_padding_mask, batch_labels
             )
             cell2 = self._get_cell_emb_from_layer(transformer_output2)
@@ -538,7 +546,7 @@ class TransformerModel(nn.Module):
 
         print("self.batch_size", self.batch_size)
         for i in trange(0, N, self.batch_size):
-            raw_output, _ = self._encode(
+            raw_output, _, _ = self._encode(
                 input_ids[i : i + self.batch_size].to(device),
                 inputs_embeds[i : i + self.batch_size].to(device),
                 src_key_padding_mask[i : i + self.batch_size].to(device),

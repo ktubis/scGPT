@@ -306,6 +306,7 @@ def main():
                         "gene embeddings rather than cell embeddings")
     parser.add_argument("--celltype_list", type=str, nargs="+", default=[], help="The celltypes on which to run inference." \
                         "If not specified, will run inference on all the cells.")
+    parser.add_argument("--attention_maps", action='store_true', help="Get layer-wise attention maps.")
 
     args = parser.parse_args()
     model_loader = ModelLoader(args.model_task, args.small_model)
@@ -391,6 +392,9 @@ def main():
                         cell_list = "_".join(args.celltype_list)
                         intermediate_embeddings_file += ("_" + cell_list)
                 test_kwargs["intermediate_embeddings_file"] = intermediate_embeddings_file
+            if args.attention_maps:
+                attention_maps_file = f"attention_maps/{model_name}_{args.train_data}_{args.seed}"
+                test_kwargs["attention_maps_file"] = attention_maps_file
 
             test_kwargs['get_gene_embs'] = args.get_gene_embs
             #adata_test = ds_loader.get_test_data(args.celltype_list)
