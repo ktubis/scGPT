@@ -368,7 +368,10 @@ class CustomTransformerEncoderLayer(nn.TransformerEncoderLayer):
             x = self.norm1(x + sa_output)
             x = self.norm2(x + self._ff_block(x))
 
-        return x, attn_weights
+        if get_attn_weights:
+            return x, attn_weights
+        else:
+            return x
 
     # self-attention block
     def _sa_block(self, x: Tensor,
