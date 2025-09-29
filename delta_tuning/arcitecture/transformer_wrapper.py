@@ -367,11 +367,12 @@ class CustomTransformerEncoderLayer(nn.TransformerEncoderLayer):
                 sa_output = self._sa_block(x, src_mask, src_key_padding_mask, is_causal=is_causal)
             x = self.norm1(x + sa_output)
             x = self.norm2(x + self._ff_block(x))
+        
+        output_dict = {}
+        output_dict["layer_output"] = x
+        output_dict["attn_weights"] = attn_weights
 
-        if get_attn_weights:
-            return x, attn_weights
-        else:
-            return x
+        return output_dict
 
     # self-attention block
     def _sa_block(self, x: Tensor,
@@ -514,14 +515,16 @@ class CustomTransformerEncoder(nn.TransformerEncoder):
         outputs = []
         attn_weights = []
         for i, mod in enumerate(self.layers):
-            output, attn_weights_per_layer = mod(output,
-                                                 src_mask=mask,
-                                                 is_causal=is_causal,
-                                                 src_key_padding_mask=src_key_padding_mask_for_layers,
-                                                 get_attn_weights=get_attn_weights,
-                                                 average_heads=average_heads)
+            layer_output_dict = mod(output,
+                                    src_mask=mask,
+                                    is_causal=is_causal,
+                                    src_key_padding_mask=src_key_padding_mask_for_layers,
+                                    get_attn_weights=get_attn_weights,
+                                    average_heads=average_heads)
+            output = layer_output_dict["layer_output"]
             outputs.append(output.clone().detach())
             if get_attn_weights:
+                attn_weights_per_layer = layer_output_dict["attn_weights"]
                 attn_weights.append(attn_weights_per_layer.clone().detach())
 
         if convert_to_nested:
