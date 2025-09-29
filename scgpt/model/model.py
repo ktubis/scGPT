@@ -207,17 +207,23 @@ class TransformerModel(nn.Module):
         elif getattr(self, "bn", None) is not None:
             total_embs = self.bn(total_embs.permute(0, 2, 1)).permute(0, 2, 1)
 
+        return_dict = {}
+        return_dict["total_embs"] = total_embs
+
         if (get_intermediate_outputs or get_attention_maps):
             output, attn_maps = self.transformer_encoder.forward_layers(
                 total_embs, src_key_padding_mask=src_key_padding_mask,
                 get_attn_weights=get_attention_maps, average_heads=average_heads,
             )
-            return output, total_embs, attn_maps  # (batch, seq_len, embsize)
+            return_dict["output"] = output
+            return_dict["attn_maps"] = attn_maps
         else:
             output = self.transformer_encoder(
                 total_embs, src_key_padding_mask=src_key_padding_mask
             )
-            return output, total_embs  # (batch, seq_len, embsize)
+            return_dict["output"] = output
+
+        return return_dict
 
     def _get_cell_emb_from_layer(
         self, layer_output: Tensor, weights: Tensor = None, emb_style=None
@@ -381,11 +387,13 @@ class TransformerModel(nn.Module):
         Returns:
             dict of output Tensors.
         """
-        transformer_output, transformer_inputs_embeds, attention_maps = self._encode(
+        encoder_dict = self._encode(
             input_ids, inputs_embeds, src_key_padding_mask, batch_labels, inputs_embeds_after_encoder,
             get_intermediate_outputs, get_attention_maps=get_attention_maps, average_heads=average_heads
         )
+        transformer_output = encoder_dict["output"]
         if get_attention_maps:
+            attention_maps = encoder_dict["attn_maps"]
             if get_gene_embs:
                 gene_attn = []
                 for i in range(self.nlayers):
@@ -403,6 +411,7 @@ class TransformerModel(nn.Module):
             # will be of length 12.
 
             intermediate_outputs = transformer_output
+            transformer_inputs_embeds = encoder_dict["total_embs"]
 
             if get_gene_embs:
                 embeds = []
