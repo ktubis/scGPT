@@ -535,7 +535,10 @@ class CustomTransformerEncoder(nn.TransformerEncoder):
             for i in range(len(outputs)):
                 outputs[i] = self.norm(outputs[i])
 
+        output_dict = {}
+        output_dict["layers_outputs"] = outputs
         if get_attn_weights:
-            return outputs, attn_weights
-        return outputs
+            output_dict["attention_weights"] = attn_weights
+
+        return output_dict
         

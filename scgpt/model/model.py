@@ -211,12 +211,13 @@ class TransformerModel(nn.Module):
         return_dict["total_embs"] = total_embs
 
         if (get_intermediate_outputs or get_attention_maps):
-            output, attn_maps = self.transformer_encoder.forward_layers(
+            #output, attn_maps
+            layers_outputs = self.transformer_encoder.forward_layers(
                 total_embs, src_key_padding_mask=src_key_padding_mask,
                 get_attn_weights=get_attention_maps, average_heads=average_heads,
             )
-            return_dict["output"] = output
-            return_dict["attn_maps"] = attn_maps
+            return_dict["total_embs"] = layers_outputs["layers_outputs"]
+            return_dict["attn_maps"] = layers_outputs["attention_weights"]
         else:
             output = self.transformer_encoder(
                 total_embs, src_key_padding_mask=src_key_padding_mask
