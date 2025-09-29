@@ -212,12 +212,12 @@ class TransformerModel(nn.Module):
                 total_embs, src_key_padding_mask=src_key_padding_mask,
                 get_attn_weights=get_attention_maps, average_heads=average_heads,
             )
+            return output, total_embs, attn_maps  # (batch, seq_len, embsize)
         else:
             output = self.transformer_encoder(
                 total_embs, src_key_padding_mask=src_key_padding_mask
             )
-
-        return output, total_embs, attn_maps  # (batch, seq_len, embsize)
+            return output, total_embs  # (batch, seq_len, embsize)
 
     def _get_cell_emb_from_layer(
         self, layer_output: Tensor, weights: Tensor = None, emb_style=None
@@ -386,7 +386,16 @@ class TransformerModel(nn.Module):
             get_intermediate_outputs, get_attention_maps=get_attention_maps, average_heads=average_heads
         )
         if get_attention_maps:
-            return attention_maps
+            if get_gene_embs:
+                gene_attn = []
+                for i in range(self.nlayers):
+                    gene_attn.append(attention_maps[i].sum(axis=0))
+                return gene_attn
+            else:
+                cell_attn = []
+                for i in range(self.nlayers):
+                    cell_attn.append(attention_maps[i][:, 0, :])
+                return cell_attn
         
         if get_intermediate_outputs:
             # in case get_intermediate_outputs, self_encode returns the intermediate outputs of all the
