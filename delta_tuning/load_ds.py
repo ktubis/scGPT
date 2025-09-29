@@ -384,8 +384,6 @@ class CCForBatch(BatchCorrectionDataLoader):
         """
         adata.obs["batch_id"] = adata.obs["seq"].astype("category").cat.codes
         adata.obs["str_batch"] = adata.obs["batch_id"].astype(str)
-        adata.obs.rename(columns={"celltype": "celltype_small"}, inplace=True)
-        adata.obs.rename(columns={"celltype_mid": "celltype"}, inplace=True)
 
     def __init__(self):
         self.train_path = "data/batch_correction/cc_10x.h5ad"
