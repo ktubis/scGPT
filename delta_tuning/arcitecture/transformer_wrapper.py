@@ -521,7 +521,7 @@ class CustomTransformerEncoder(nn.TransformerEncoder):
                                                  get_attn_weights=get_attn_weights,
                                                  average_heads=average_heads)
             outputs.append(output.clone().detach())
-            if attn_weights_per_layer is not None:
+            if get_attn_weights:
                 attn_weights.append(attn_weights_per_layer.clone().detach())
 
         if convert_to_nested:
@@ -532,5 +532,7 @@ class CustomTransformerEncoder(nn.TransformerEncoder):
             for i in range(len(outputs)):
                 outputs[i] = self.norm(outputs[i])
 
-        return outputs, attn_weights
+        if get_attn_weights:
+            return outputs, attn_weights
+        return outputs
         
