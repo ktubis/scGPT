@@ -546,6 +546,10 @@ class ScGPTModelWrapper(ABC):
             for i in range(self.model.nlayers):
                 avg_attn_adata.obsm[f"transformer_layer_{i}"] = avg_attn_maps[i]
                 cell_attn_adata.obsm[f"transformer_layer_{i}"] = cell_attn_maps[i]
+            for adata in [avg_attn_adata, cell_attn_adata]:
+                if "highly_variable_intersection" in adata.var:
+                    adata.var.drop(columns=["highly_variable_intersection"],
+                                   inplace=True)
             avg_attn_file = attention_maps_file + "_avg.h5ad"
             cell_attn_file = attention_maps_file + "_cell.h5ad"
             avg_attn_adata.write_h5ad(avg_attn_file)
