@@ -538,7 +538,8 @@ class ScGPTModelWrapper(ABC):
             )
             var_with_cls = adata.var.copy()
             if "highly_variable" in var_with_cls:
-                var_with_cls.drop(columns=["highly_variable"], inplace=True)
+                var_with_cls.drop(columns=["highly_variable", "highly_variable_intersection"], 
+                                  inplace=True)
             cls_row = pd.DataFrame(index=['cls'])
             var_with_cls = pd.concat([cls_row, var_with_cls])
             avg_attn_adata = ad.AnnData(obs=var_with_cls)
@@ -546,10 +547,6 @@ class ScGPTModelWrapper(ABC):
             for i in range(self.model.nlayers):
                 avg_attn_adata.obsm[f"transformer_layer_{i}"] = avg_attn_maps[i]
                 cell_attn_adata.obsm[f"transformer_layer_{i}"] = cell_attn_maps[i]
-            for adata in [avg_attn_adata, cell_attn_adata]:
-                if "highly_variable_intersection" in adata.obs:
-                    adata.obs.drop(columns=["highly_variable_intersection"],
-                                   inplace=True)
             avg_attn_file = attention_maps_file + "_avg.h5ad"
             cell_attn_file = attention_maps_file + "_cell.h5ad"
             avg_attn_adata.write_h5ad(avg_attn_file)
