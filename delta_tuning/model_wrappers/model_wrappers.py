@@ -445,7 +445,7 @@ class ScGPTModelWrapper(ABC):
                         else:
                             avg_attention_maps[i] += np.sum(output[i].cpu().numpy(), axis=0)
                         # get the attention of the <cls>
-                        cell_attention_maps[i].append(output[i][:, 0, :].cpu().numpy()) 
+                        cell_attention_maps[i].append(output[i].cpu().numpy())
                 else:
                     total_batch_loss, total_batch_error = self.calc_eval_metrics(output, batch_data)
                     total_loss += total_batch_loss
