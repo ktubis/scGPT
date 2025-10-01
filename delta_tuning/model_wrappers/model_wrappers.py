@@ -538,9 +538,10 @@ class ScGPTModelWrapper(ABC):
             )
             var_with_cls = adata.var.copy()
             if "highly_variable" in var_with_cls:
-                var_with_cls.drop(columns=["highly_variable",
-                                           "highly_variable_intersection",
-                                           "feature_is_filtered"], 
+                cols_to_drop = ["highly_variable",
+                                "highly_variable_intersection",
+                                "feature_is_filtered"]
+                var_with_cls.drop(columns=[col for col in cols_to_drop if col in var_with_cls.columns], 
                                   inplace=True)
             cls_row = pd.DataFrame(index=['cls'])
             var_with_cls = pd.concat([cls_row, var_with_cls])
