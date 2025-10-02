@@ -440,12 +440,14 @@ class ScGPTModelWrapper(ABC):
                             intermediate_embeddings[i].append(output[i].cpu().numpy())
                 elif get_attn_maps:
                     for i in range(self.model.nlayers):
-                        if len(avg_attention_maps[i]) == 0:
-                                avg_attention_maps[i] = np.sum(output[i].cpu().numpy(), axis=0)
+                        if get_gene_embs:
+                            if len(avg_attention_maps[i]) == 0:
+                                    avg_attention_maps[i] = np.sum(output[i].cpu().numpy(), axis=0)
+                            else:
+                                avg_attention_maps[i] += np.sum(output[i].cpu().numpy(), axis=0)
                         else:
-                            avg_attention_maps[i] += np.sum(output[i].cpu().numpy(), axis=0)
-                        # get the attention of the <cls>
-                        cell_attention_maps[i].append(output[i].cpu().numpy())
+                            # get the attention of the <cls>
+                            cell_attention_maps[i].append(output[i].cpu().numpy())
                 else:
                     total_batch_loss, total_batch_error = self.calc_eval_metrics(output, batch_data)
                     total_loss += total_batch_loss
@@ -467,10 +469,14 @@ class ScGPTModelWrapper(ABC):
         
         if get_attn_maps:
             for i in range(self.model.nlayers):
-                avg_attention_maps[i] /= total_num
-                cell_attention_maps[i] = np.concatenate(cell_attention_maps[i], axis=0)
-            return avg_attention_maps, cell_attention_maps
-
+                if get_gene_embs:
+                    avg_attention_maps[i] /= total_num
+                else:
+                    cell_attention_maps[i] = np.concatenate(cell_attention_maps[i], axis=0)
+            if get_gene_embs:
+                return avg_attention_maps
+            else:
+                return cell_attention_maps
 
         eval_dict = {}
         if return_raw:
@@ -531,7 +537,15 @@ class ScGPTModelWrapper(ABC):
             return
         
         if attention_maps_file:
-            avg_attn_maps, cell_attn_maps = self._evaluate(
+            if get_gene_embs:
+                avg_attn_maps = self._evaluate(
+                    loader=test_loader,
+                    get_intermediate_outputs=False,
+                    get_gene_embs=True,
+                    get_attn_maps=True
+                )
+            else:
+                cell_attn_maps = self._evaluate(
                 loader=test_loader,
                 get_intermediate_outputs=False,
                 get_attn_maps=True
@@ -545,15 +559,19 @@ class ScGPTModelWrapper(ABC):
                                   inplace=True)
             cls_row = pd.DataFrame(index=['cls'])
             var_with_cls = pd.concat([cls_row, var_with_cls])
-            avg_attn_adata = ad.AnnData(obs=var_with_cls)
-            cell_attn_adata = ad.AnnData(obs=adata.obs.copy(), var=var_with_cls)
-            for i in range(self.model.nlayers):
-                avg_attn_adata.obsm[f"transformer_layer_{i}"] = avg_attn_maps[i]
-                cell_attn_adata.obsm[f"transformer_layer_{i}"] = cell_attn_maps[i]
-            avg_attn_file = attention_maps_file + "_avg.h5ad"
-            cell_attn_file = attention_maps_file + "_cell.h5ad"
-            avg_attn_adata.write_h5ad(avg_attn_file)
-            cell_attn_adata.write_h5ad(cell_attn_file)
+
+            if get_gene_embs:
+                avg_attn_adata = ad.AnnData(obs=var_with_cls)
+                for i in range(self.model.nlayers):
+                    avg_attn_adata.obsm[f"transformer_layer_{i}"] = avg_attn_maps[i]
+                avg_attn_file = attention_maps_file + "_avg.h5ad"
+                avg_attn_adata.write_h5ad(avg_attn_file)
+            else:
+                cell_attn_adata = ad.AnnData(obs=adata.obs.copy(), var=var_with_cls)
+                for i in range(self.model.nlayers):
+                    cell_attn_adata.obsm[f"transformer_layer_{i}"] = cell_attn_maps[i]
+                cell_attn_file = attention_maps_file + "_cell.h5ad"
+                cell_attn_adata.write_h5ad(cell_attn_file)
             return
 
         save_predictions = predictions_file and self.need_predictions
