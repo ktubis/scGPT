@@ -442,9 +442,9 @@ class ScGPTModelWrapper(ABC):
                     for i in range(self.model.nlayers):
                         if get_gene_embs:
                             if len(avg_attention_maps[i]) == 0:
-                                    avg_attention_maps[i] = np.sum(output[i].cpu().numpy(), axis=0)
+                                    avg_attention_maps[i] = output[i].cpu().numpy()
                             else:
-                                avg_attention_maps[i] += np.sum(output[i].cpu().numpy(), axis=0)
+                                avg_attention_maps[i] += output[i].cpu().numpy()
                         else:
                             # get the attention of the <cls>
                             cell_attention_maps[i].append(output[i].cpu().numpy())
