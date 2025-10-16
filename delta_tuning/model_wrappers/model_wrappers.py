@@ -26,7 +26,6 @@ from gears import PertData
 import load_ds
 
 from arcitecture.transformer_wrapper import copy_original_model
-from OpenDelta.opendelta import AdapterModel, LoraModel
 
 sys.path.insert(0, "../")
 from scgpt.tokenizer import tokenize_and_pad_batch, random_mask_value
@@ -976,33 +975,6 @@ class ScGPTModelWrapper(ABC):
         for param in self.model.parameters():
             param.requires_grad = False
 
-    def add_open_delta_model(self, delta_model_config, wandb_config):
-        if delta_model_config["delta_method"] == "adapter":
-            if "modified_modules" in delta_model_config:
-                modified_modules = delta_model_config["modified_modules"]
-            else:
-                modified_modules = []
-                for i in range(self.model.nlayers):
-                    modified_modules.append(f"transformer_encoder.layers.{i}.linear2")
-            delta_model = AdapterModel(backbone_model=self.model, bottleneck_dim=delta_model_config["delta_param"],
-                                       modified_modules=modified_modules)
-            wandb_config["delta_param"] = delta_model_config["delta_param"]
-        elif delta_model_config["delta_method"] == "lora":
-            if "modified_modules" in delta_model_config:
-                modified_modules = delta_model_config["modified_modules"]
-            else:
-                modified_modules = []
-                for i in range(self.model.nlayers):
-                    modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.Q")
-                    modified_modules.append(f"transformer_encoder.layers.{i}.self_attn.V")
-            delta_model = LoraModel(backbone_model=self.model, lora_r=delta_model_config["delta_param"],
-                                    modified_modules=modified_modules)
-            wandb_config["delta_param"] = delta_model_config["delta_param"]
-        self.model.to("cuda")
-        delta_model.freeze_module(module=self.model, exclude=['deltas'], set_state_dict=False)
-        self.model.get_trainable_parameters()
-
-
     def finetune_custom_module(self, delta_model_config, wandb_config):
         self.freeze_all_modules()
         module_name = delta_model_config["module"]
@@ -1045,7 +1017,7 @@ class ScGPTModelWrapper(ABC):
         :param model_config: model configuration
         :param wandb_config: wandb configuration
         """
-        SUPPORTED_DELTA_TYPES = ["all_weights", "specify_transformer_layers", "adapter", "lora"]
+        SUPPORTED_DELTA_TYPES = ["all_weights", "specify_transformer_layers"]
         delta_method = delta_model_config["delta_method"]
         
         if delta_method == "all_weights":
@@ -1055,9 +1027,6 @@ class ScGPTModelWrapper(ABC):
         elif delta_method == "specify_transformer_layers":
             print("Delta type is 'specify_transformer_layers', training specified transformer modules.")
             self.train_transformer_modules(delta_model_config, wandb_config)
-        elif delta_method == "adapter" or delta_method == "lora":
-            print(f"Delta type is '{delta_method}', adding OpenDelta model.")
-            self.add_open_delta_model(delta_model_config, wandb_config)
         elif delta_method == "custom_module":
             print("Delta type: custom_module, for module: ", delta_model_config["module"])
             self.finetune_custom_module(delta_model_config, wandb_config)
