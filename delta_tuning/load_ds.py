@@ -29,6 +29,8 @@ class SupportedDatasets(Enum):
     PC_BATCH = "pc_batch"
     CC_BATCH = "cc_batch"
     KIM_LUNG = "kim_lung"
+    NORMAN = "norman"
+    ADAMSON = "adamson"
 
     
 def get_data_loader(ds_name):
@@ -71,6 +73,10 @@ def get_data_loader(ds_name):
         return DownsampledCC()
     if ds_name == SupportedDatasets.KIM_LUNG.value:
         return KimLung()
+    if ds_name == SupportedDatasets.NORMAN.value:
+        return PerturbationDataLoader()
+    if ds_name == SupportedDatasets.ADAMSON.value:
+        return PerturbationDataLoader()
     raise ValueError("Invalid dataset name. Supported names are: ",
                      [ds.value for ds in SupportedDatasets])
 
@@ -120,7 +126,7 @@ class DataLoader(ABC):
     def get_num_celltypes(self):
         return self.num_celltypes
     
-    def get_train_test(self, test_ds_name=None):
+    def get_train_test(self):
         return self.train_data, self.test_data
     
     def get_test_data(self, celltype_list=None):
@@ -142,6 +148,26 @@ class BatchCorrectionDataLoader(DataLoader):
         if celltype_list:
             return self.train_data[self.train_data.obs["celltype"].isin(celltype_list)]
         return self.train_data"""
+
+class PerturbationDataLoader(DataLoader):
+    def __init__(self):
+        super().__init__()
+
+    def load_train_test(self, pert_data):
+        train_perts = set([d.pert for d in pert_data.dataloader['train_loader'].dataset])
+        val_perts = set([d.pert for d in pert_data.dataloader['val_loader'].dataset])
+        test_perts = set([d.pert for d in pert_data.dataloader['test_loader'].dataset])
+
+        self.train_data = pert_data.adata[
+            pert_data.adata.obs["condition"].isin(train_perts | val_perts)]
+        self.test_data = pert_data.adata[
+            pert_data.adata.obs["condition"].isin(test_perts)]
+        
+    def get_num_celltypes(self):
+        return 1
+
+    def get_num_batches(self):
+        return 1
 
 class FilteredPancreas(CellAnnotationDataloader):
     def __init__(self):
@@ -172,6 +198,7 @@ class MS(CellAnnotationDataloader):
         """
         adata.obs.rename(columns={"str_batch": "batch_id"}, inplace=True)
         adata.obs["batch_id"] = adata.obs["batch_id"].astype("int")
+        adata.var.index.name = None
 
     def __init__(self):
         self.train_path = "data/datasets/ms/filtered_ms_adata.h5ad"

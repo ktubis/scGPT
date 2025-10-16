@@ -96,11 +96,12 @@ def get_data_loaders(ds_loader, vocab, n_input_bins, test_data, n_hvg, model_tas
 
     return adata_train, adata_test
 
+"""
 def add_tokens_to_vocab(pad_token, vocab):
     special_tokens = [pad_token, "<cls>", "<eoc>"]
     for s in special_tokens:
         if s not in vocab:
-            vocab.append_token(s)
+            vocab.append_token(s)"""
 
 
 def hyperparameter_search(task_model, num_epochs, adata_train, adata_test, trial, lr, warm_up_percentage, batch_size, logger):
@@ -253,7 +254,7 @@ def run_optuna_hyperparam_search(model_loader, model_init_params, adata_train, a
         df.to_csv(f"{HYPERPARAMS_SEARCH_DIR}/{wandb_config['model_name']}.csv", index=False)
 
 
-def train_model(args, adata_train, adata_test, task_model, delta_config, wandb_config, warm_up_percentage=0):
+def train_model(args, task_model, delta_config, wandb_config, warm_up_percentage=0):
     print(delta_config)
     #init_wandb(wandb_config)
     #wandb.watch(task_model.model, log="all", log_graph=True)
@@ -272,7 +273,7 @@ def train_model(args, adata_train, adata_test, task_model, delta_config, wandb_c
     else:
         warm_up_percentage = args.warm_up_percentage
     
-    task_model.train(lr, epochs, adata_train, adata_test=adata_test, find_lr=args.find_lr,
+    task_model.train(lr, epochs, find_lr=args.find_lr,
               warm_up_percentage=warm_up_percentage, early_stop=args.early_stop)
 
 
@@ -318,13 +319,13 @@ def main():
     set_seed(args.seed)
 
     vocab = GeneVocab.from_file(VOCAB_PATH)
-    add_tokens_to_vocab(model_loader.get_pad_token(), vocab)
-    ds_loader = load_ds.get_data_loader(args.train_data)
-    n_hvg = model_loader.get_hvg()
-    adata_train, adata_test = get_data_loaders(ds_loader, vocab, model_loader.get_input_bins(),
-                                               args.test_data, n_hvg=n_hvg,  model_task=args.model_task)
-    num_celltypes = ds_loader.get_num_celltypes()
-    num_batches = ds_loader.get_num_batches()
+    #add_tokens_to_vocab(model_loader.get_pad_token(), vocab)
+    #ds_loader = load_ds.get_data_loader(args.train_data)
+    #n_hvg = model_loader.get_hvg()
+    #adata_train, adata_test = get_data_loaders(ds_loader, vocab, model_loader.get_input_bins(),
+    #                                           args.test_data, n_hvg=n_hvg,  model_task=args.model_task)
+    #num_celltypes = ds_loader.get_num_celltypes()
+    #num_batches = ds_loader.get_num_batches()
 
     # Get the current date and time, format as 'yymmddhhmm'
     formatted_time = datetime.now().strftime('%y%m%d%H%M')
@@ -348,28 +349,25 @@ def main():
     }
 
     model_init_params = {
+        "data_name": args.train_data,
         "model_path": args.model,
         "vocab": vocab,
-        "num_celltypes": num_celltypes,
-        "num_batches": num_batches,
+        #"num_celltypes": num_celltypes,
+        #"num_batches": num_batches,
         "model_name": model_name,
         "batch_size": args.batch_size,
-        "eval_batch_size": args.batch_size,
         "delta_config": delta_config,
         "wandb_config": wandb_config,
-        "max_seq_len": model_loader.get_seq_len()
     }
 
     if args.hyperparam_search_config:
         assert not args.inference, "Hyperparameter search cannot be run in inference mode."
-        run_optuna_hyperparam_search(model_loader, model_init_params, adata_train, adata_test, delta_config,
+        run_optuna_hyperparam_search(model_loader, model_init_params, delta_config,
                                      wandb_config, args.hyperparam_search_config, logging.getLogger())
     else:
         task_model = model_loader.get_model(model_init_params)
         if not args.inference:
             train_model(args,
-                        adata_train,
-                        adata_test,
                         task_model, 
                         delta_config, 
                         wandb_config, 
@@ -398,7 +396,7 @@ def main():
 
             test_kwargs['get_gene_embs'] = args.get_gene_embs
             #adata_test = ds_loader.get_test_data(args.celltype_list)
-            task_model.test(adata_test, **test_kwargs)
+            task_model.test(**test_kwargs)
     print("HERE")
     exit(0)
 

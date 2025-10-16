@@ -16,7 +16,8 @@ import anndata as ad
 import scanpy as sc
 
 from delta_tuning.arcitecture.transformer_wrapper import CustomTransformerEncoderLayer, MultiheadAttentionDeconstructed, CustomTransformerEncoder
-
+#from .generation_model import AffineExprDecoder
+from ..utils import map_raw_id_to_vocab_id
 
 from .dsbn import DomainSpecificBatchNorm1d
 from .grad_reverse import grad_reverse
@@ -55,6 +56,10 @@ class TransformerModel(nn.Module):
         use_fast_transformer: bool = False,
         fast_transformer_backend: str = "flash",
         pre_norm: bool = False,
+        is_perturbation_model: bool = False,
+        pert_pad_id: int = 2,
+        decoder_activation: Optional[str] = None,
+        decoder_adaptive_bias: bool = False,
     ):
         super().__init__()
         self.model_type = "Transformer"
@@ -68,6 +73,7 @@ class TransformerModel(nn.Module):
         self.domain_spec_batchnorm = domain_spec_batchnorm
         self.input_emb_style = input_emb_style
         self.cell_emb_style = cell_emb_style
+        self.is_perturbation_model = is_perturbation_model
         self.explicit_zero_prob = explicit_zero_prob
         self.norm_scheme = "pre" if pre_norm else "post"
         if self.input_emb_style not in ["category", "continuous", "scaling"]:
@@ -99,6 +105,8 @@ class TransformerModel(nn.Module):
         # Batch Encoder
         if use_batch_labels:
             self.batch_encoder = BatchLabelEncoder(num_batch_labels, d_model)
+        if self.is_perturbation_model:
+            self.pert_encoder = nn.Embedding(3, d_model, padding_idx=pert_pad_id)
 
         if domain_spec_batchnorm is True or domain_spec_batchnorm == "dsbn":
             use_affine = True if domain_spec_batchnorm == "do_affine" else False
@@ -115,11 +123,19 @@ class TransformerModel(nn.Module):
         )
         self.transformer_encoder = CustomTransformerEncoder(encoder_layers, nlayers)
 
-        self.decoder = ExprDecoder(
+        if self.is_perturbation_model:
+            self.decoder = AffineExprDecoder(
             d_model,
             explicit_zero_prob=explicit_zero_prob,
-            use_batch_labels=use_batch_labels,
+            activation=decoder_activation,
+            adaptive_bias=decoder_adaptive_bias,
         )
+        else:
+            self.decoder = ExprDecoder(
+                d_model,
+                explicit_zero_prob=explicit_zero_prob,
+                use_batch_labels=use_batch_labels,
+            )
         self.cls_decoder = ClsDecoder(d_model, n_cls, nlayers=nlayers_cls)
         if do_mvc:
             self.mvc_decoder = MVCDecoder(
@@ -164,34 +180,17 @@ class TransformerModel(nn.Module):
         inputs_embeds: Tensor,
         src_key_padding_mask: Tensor,
         batch_labels: Optional[Tensor] = None,  # (batch,)
-        inputs_embeds_after_encoder: Optional[Tensor] = None,
         get_intermediate_outputs = False,
         get_attention_maps = False,
-        average_heads = True
+        average_heads = True,
+        input_pert_flags = None
     ) -> Tensor:
         self._check_batch_labels(batch_labels)
 
-        # For the soft_prompt delta model
-        if inputs_embeds_after_encoder is None:
-            input_ids = input_ids.int()
-            input_ids = self.encoder(input_ids)  # (batch, seq_len, embsize)
-        else:
-            input_ids = inputs_embeds_after_encoder
+        input_ids = input_ids.int()
+        input_ids = self.encoder(input_ids)  # (batch, seq_len, embsize)
         self.cur_gene_token_embs = input_ids
-
         inputs_embeds = self.value_encoder(inputs_embeds)  # (batch, seq_len, embsize)
-        if inputs_embeds_after_encoder is not None:
-            batch_size, seq_len1, embsize = input_ids.shape
-            seq_len2 = inputs_embeds.shape[1]
-            pad_len = seq_len1 - seq_len2
-
-            # Create zero padding
-            pad = torch.zeros((batch_size, pad_len, embsize), device=inputs_embeds.device, dtype=inputs_embeds.dtype)
-            # Pad at the beginning
-            inputs_embeds = torch.cat([pad, inputs_embeds], dim=1)
-
-            bool_pad = torch.zeros((batch_size, pad_len), device=inputs_embeds.device, dtype=torch.bool)
-            src_key_padding_mask = torch.cat([bool_pad, src_key_padding_mask], dim=1)
 
         if self.input_emb_style == "scaling":
             inputs_embeds = inputs_embeds.unsqueeze(2)
@@ -199,6 +198,10 @@ class TransformerModel(nn.Module):
         else:
             total_embs = input_ids + inputs_embeds
 
+        if self.is_perturbation_model:
+            perts = self.pert_encoder(input_pert_flags)  # (batch, seq_len, embsize)
+            total_embs = total_embs + perts
+        
         if getattr(self, "dsbn", None) is not None:
             batch_label = int(batch_labels[0].item())
             total_embs = self.dsbn(total_embs.permute(0, 2, 1), batch_label).permute(
@@ -363,11 +366,11 @@ class TransformerModel(nn.Module):
         ECS: bool = False,
         do_sample: bool = False,
         attention_mask = None,
-        inputs_embeds_after_encoder: Optional[Tensor] = None,
         get_intermediate_outputs=False,
         get_gene_embs=False,
         get_attention_maps = False,
         average_heads = True,
+        input_pert_flags = None
     ) -> Mapping[str, Tensor]:
         """
         Args:
@@ -389,8 +392,9 @@ class TransformerModel(nn.Module):
             dict of output Tensors.
         """
         encoder_dict = self._encode(
-            input_ids, inputs_embeds, src_key_padding_mask, batch_labels, inputs_embeds_after_encoder,
-            get_intermediate_outputs, get_attention_maps=get_attention_maps, average_heads=average_heads
+            input_ids, inputs_embeds, src_key_padding_mask, batch_labels,
+            get_intermediate_outputs, input_pert_flags=input_pert_flags,
+            get_attention_maps=get_attention_maps, average_heads=average_heads
         )
         transformer_output = encoder_dict["output"]
         if get_attention_maps:
@@ -434,18 +438,21 @@ class TransformerModel(nn.Module):
             batch_emb = self.batch_encoder(batch_labels)  # (batch, embsize)
 
         output = {}
-        mlm_output = self.decoder(
-            transformer_output
-            if not self.use_batch_labels
-            else torch.cat(
-                [
-                    transformer_output,
-                    batch_emb.unsqueeze(1).repeat(1, transformer_output.shape[1], 1),
-                ],
-                dim=2,
-            ),
-            # else transformer_output + batch_emb.unsqueeze(1),
-        )
+        if self.is_perturbation_model:
+            mlm_output = self.decoder(transformer_output, inputs_embeds)
+        else:
+            mlm_output = self.decoder(
+                transformer_output
+                if not self.use_batch_labels
+                else torch.cat(
+                    [
+                        transformer_output,
+                        batch_emb.unsqueeze(1).repeat(1, transformer_output.shape[1], 1),
+                    ],
+                    dim=2,
+                ),
+                # else transformer_output + batch_emb.unsqueeze(1),
+            )
         if self.explicit_zero_prob and do_sample:
             bernoulli = Bernoulli(probs=mlm_output["zero_probs"])
             output["mlm_output"] = bernoulli.sample() * mlm_output["pred"]
@@ -1146,3 +1153,71 @@ class AdversarialDiscriminator(nn.Module):
         for layer in self._decoder:
             x = layer(x)
         return self.out_layer(x)
+
+
+class AffineExprDecoder(nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+        explicit_zero_prob: bool = False,
+        activation: Optional[str] = None,
+        tanh_coeff: bool = False,
+        adaptive_bias: bool = False,
+    ):
+        """
+        Predict the expression value of each gene in an affine like form of Ax + b.
+        This decoder takes two ExprDecoder intrinsically to genrate the coefficient A and bias b.
+
+        Args:
+            d_model: The embedding dimension.
+            explicit_zero_prob: If True, predict the probability of each gene being
+                zero.
+            activation: The activation function for the coefficient A and bias b.
+            tanh_coeff: If True, use tanh activation for the coefficient A.
+            adaptive_bias: If True, use a learnable bias for the bias b.
+        """
+        super().__init__()
+        self.explicit_zero_prob = explicit_zero_prob
+        self.tanh_coeff = tanh_coeff
+        self.adaptive_bias = adaptive_bias
+        self.coeff_decoder = ExprDecoder(d_model, explicit_zero_prob=explicit_zero_prob)
+        self.bias_decoder = ExprDecoder(d_model, explicit_zero_prob=explicit_zero_prob)
+
+        self.activation = activation
+        if activation is not None:
+            assert hasattr(nn, activation), f"Unknown activation: {activation}"
+            self.activation = getattr(nn, activation)()
+
+    def forward(self, x: Tensor, values: Tensor) -> Tensor:
+        """
+        Args:
+            x: Tensor, shape [batch_size, seq_len, embsize]
+            values: Tensor, shape [batch_size, seq_len]
+
+        Returns:
+            output Tensor of shape [batch_size, seq_len]
+        """
+        coeff = self.coeff_decoder(x)
+        bias = self.bias_decoder(x)
+
+        if self.activation is not None:
+            coeff["pred"] = self.activation(coeff["pred"])
+            bias["pred"] = self.activation(bias["pred"])
+
+        # if self.tanh_coeff:
+        #     coeff["pred"] = 1 + torch.tanh(coeff["pred"])
+
+        if self.adaptive_bias:
+            # bias["pred"] = bias["pred"] * values.mean(dim=1, keepdim=True)
+            non_zero_value_mean = values.sum(dim=1, keepdim=True) / (values != 0).sum(
+                dim=1, keepdim=True
+            )
+            bias["pred"] = bias["pred"] * non_zero_value_mean
+
+        if self.explicit_zero_prob:
+            return {
+                "pred": coeff["pred"] * values + bias["pred"],
+                "zero_probs": coeff["zero_probs"],
+            }
+
+        return dict(pred=coeff["pred"] * values + bias["pred"])

@@ -22,6 +22,8 @@ import matplotlib.pyplot as plt
 from enum import Enum
 import json
 from copy import deepcopy
+from gears import PertData
+import load_ds
 
 from arcitecture.transformer_wrapper import copy_original_model
 from OpenDelta.opendelta import AdapterModel, LoraModel
@@ -32,11 +34,13 @@ from scgpt.model import TransformerModel
 import scgpt
 from scgpt import SubsetsBatchSampler
 from scgpt.utils import eval_scib_metrics
+from scgpt.preprocess import Preprocessor
 from scgpt.loss import (
     masked_mse_loss,
     masked_relative_error,
     criterion_neg_log_bernoulli,
 )
+from scgpt.utils import map_raw_id_to_vocab_id, compute_perturbation_metrics
 
 INPUT_LAYER = "X_binned"
 LOG_INTERVAL = 100
@@ -64,6 +68,12 @@ TrainTestSplitResults = namedtuple(
     ],
 )
 
+def add_tokens_to_vocab(pad_token, vocab):
+        special_tokens = [pad_token, "<cls>", "<eoc>"]
+        for s in special_tokens:
+            if s not in vocab:
+                vocab.append_token(s)
+
 
 # TODO: move to outer file
 class SeqDataset(Dataset):
@@ -75,52 +85,378 @@ class SeqDataset(Dataset):
 
     def __getitem__(self, idx):
         return {k: v[idx] for k, v in self.data.items()}
+
+
+class ModelDataloader():
+
+    def __init__(self, data_name, vocab, pad_token, pad_value, batch_size, max_seq_len,
+                 mask_ratio, mask_value):
+        self.vocab = vocab
+        self.data_name = data_name
+        self.adata_train = None
+        self.adata_test = None
+        add_tokens_to_vocab(pad_token, self.vocab)
+        self.vocab.set_default_index(vocab[pad_token])
+        self.batch_size = batch_size
+        self.pad_token = pad_token
+        self.pad_value = pad_value
+        self.max_seq_len = max_seq_len
+        self.mask_ratio = mask_ratio
+        self.mask_value = mask_value
+
+    @abstractmethod
+    def preprocess(self):
+        pass
+
+    def get_dataloader(self):
+        pass
+
+    @abstractmethod
+    def get_num_training_steps(self):
+        pass
+
+
+
+
+# Used by celltype annotation and batch correction
+class SimpleDataloader(ModelDataloader):
+
+    def __init__(self, data_name, vocab, n_input_bins, n_hvg, pad_token,
+                 pad_value, batch_size, max_seq_len, model_task, mask_ratio,
+                 mask_value):
+        super().__init__(data_name, vocab, pad_token, pad_value, batch_size, max_seq_len,
+                         mask_ratio, mask_value)
+        self.ds_loader = load_ds.get_data_loader(self.data_name)
+        self._process_train_test(n_input_bins, n_hvg, model_task)
+
+    def get_num_celltypes(self):
+        return self.ds_loader.get_num_celltypes()
     
+    def get_num_batches(self):
+        return self.ds_loader.get_num_batches()
 
-def prepare_dataloader(
-    data_pt: Dict[str, torch.Tensor],
-    batch_size: int,
-    shuffle: bool = False,
-    drop_last: bool = False,
-    num_workers: int = 0,
-    intra_domain_shuffle: bool = False,
-    per_seq_batch_sample: bool = False,
-) -> DataLoader:
-    if num_workers == 0:
-        num_workers = min(len(os.sched_getaffinity(0)), batch_size // 2)
+    def _preprocess_data(self, adata, preprocessor, vocab, batch_key=None):
+        """
+        Filter genes in the AnnData object based on their presence in the vocabulary.
+        
+        Args:
+            adata (AnnData): The AnnData object containing gene expression data.
+        
+        Returns:
+            adata (AnnData): The filtered AnnData object.
+        """
+        preprocessor(adata, batch_key=batch_key)
+        adata.var["id_in_vocab"] = [
+            1 if gene in vocab else -1 for gene in adata.var.index
+        ]
+        adata = adata[:, adata.var["id_in_vocab"] >= 0]
 
-    dataset = SeqDataset(data_pt)
 
-    if per_seq_batch_sample:
-        # find the indices of samples in each seq batch
-        subsets = []
-        batch_labels_array = data_pt["batch_labels"].numpy()
-        for batch_label in np.unique(batch_labels_array):
-            batch_indices = np.where(batch_labels_array == batch_label)[0].tolist()
-            subsets.append(batch_indices)
+    def _process_train_test(self, n_input_bins, n_hvg, model_task):
+        self.adata_train, self.adata_test = self.ds_loader.get_train_test()
+
+        # set up the preprocessor, use the args to config the workflow
+        preprocessor = Preprocessor(
+            use_key="X",
+            normalize_total=0.0,
+            binning=n_input_bins,
+            result_binned_key=INPUT_LAYER,
+            subset_hvg=n_hvg if n_hvg < self.adata_train.shape[1] else False,
+            hvg_flavor="seurat"    # Assumes data is not raw
+        )
+
+        batch_key = "str_batch" if model_task == "batch_correction" else None
+        self._preprocess_data(self.adata_train, preprocessor, self.vocab, batch_key)
+        self._preprocess_data(self.adata_test, preprocessor, self.vocab, batch_key)
+
+    # Needs to be called before training, once
+    def _get_split_data(self):
+        all_counts = (
+            self.adata_train.layers[INPUT_LAYER].A
+            if issparse(self.adata_train.layers[INPUT_LAYER])
+            else self.adata_train.layers[INPUT_LAYER]
+        )
+
+        celltypes_labels = self.adata_train.obs["celltype_id"].tolist()  # make sure count from 0
+        celltypes_labels = np.array(celltypes_labels)
+
+        batch_ids = self.adata_train.obs["batch_id"].tolist()
+        batch_ids = np.array(batch_ids)
+
+        genes = self.adata_train.var.index.tolist()
+        gene_ids = np.array(self.vocab(genes), dtype=int)
+
+        split_data = TrainTestSplitResults(*train_test_split(
+            all_counts, celltypes_labels, batch_ids, test_size=0.1, shuffle=True
+        ))
+        return split_data, gene_ids
+
+    
+    def _prepare_data_for_train(self, sort_seq_batch=False) -> Tuple[Dict[str, torch.Tensor]]:
+
+        input_gene_ids_train, input_gene_ids_valid = (
+            self.tokenized_train["genes"],
+            self.tokenized_valid["genes"],
+        )
+
+        masked_values_train = random_mask_value(
+            self.tokenized_train["values"],
+            mask_ratio=self.mask_ratio,
+            mask_value=self.mask_value,
+            pad_value=self.pad_value,
+        )
+
+        masked_values_valid = random_mask_value(
+            self.tokenized_valid["values"],
+            mask_ratio=self.mask_ratio,
+            mask_value=self.mask_value,
+            pad_value=self.pad_value,
+        )
+
+        input_values_train, input_values_valid = masked_values_train, masked_values_valid
+        target_values_train, target_values_valid = (
+            self.tokenized_train["values"],
+            self.tokenized_valid["values"],
+        )
+
+        tensor_batch_labels_train = torch.from_numpy(self.split_data.train_batch_labels).long()
+        tensor_batch_labels_valid = torch.from_numpy(self.split_data.valid_batch_labels).long()
+
+        tensor_celltype_labels_train = torch.from_numpy(self.split_data.train_celltype_labels).long()
+        tensor_celltype_labels_valid = torch.from_numpy(self.split_data.valid_celltype_labels).long()
+
+        if sort_seq_batch:
+            train_sort_ids = np.argsort(self.split_data.train_batch_labels)
+            input_gene_ids_train = input_gene_ids_train[train_sort_ids]
+            input_values_train = input_values_train[train_sort_ids]
+            target_values_train = target_values_train[train_sort_ids]
+            tensor_batch_labels_train = tensor_batch_labels_train[train_sort_ids]
+
+            valid_sort_ids = np.argsort(self.split_data.valid_batch_labels)
+            input_gene_ids_valid = input_gene_ids_valid[valid_sort_ids]
+            input_values_valid = input_values_valid[valid_sort_ids]
+            target_values_valid = target_values_valid[valid_sort_ids]
+            tensor_batch_labels_valid = tensor_batch_labels_valid[valid_sort_ids]
+
+
+        train_data_pt = {
+            "gene_ids": input_gene_ids_train,
+            "values": input_values_train,
+            "target_values": target_values_train,
+            "batch_labels": tensor_batch_labels_train,
+            "celltype_labels": tensor_celltype_labels_train,
+        }
+        valid_data_pt = {
+            "gene_ids": input_gene_ids_valid,
+            "values": input_values_valid,
+            "target_values": target_values_valid,
+            "batch_labels": tensor_batch_labels_valid,
+            "celltype_labels": tensor_celltype_labels_valid,
+        }
+
+        return train_data_pt, valid_data_pt
+    
+    def get_num_training_steps(self):
+        return np.ceil(len(self.split_data.train_data) / self.batch_size)
+
+    def prepare_train_and_valid(self, include_zero_gene):
+        self.split_data, gene_ids = self._get_split_data()
+        self.tokenized_train = tokenize_and_pad_batch(
+            self.split_data.train_data,
+            gene_ids,
+            max_len=self.max_seq_len,
+            vocab=self.vocab,
+            pad_token=self.pad_token,
+            pad_value=self.pad_value,
+            append_cls=True,  # append <cls> token at the beginning
+            include_zero_gene=include_zero_gene
+        )
+    
+        self.tokenized_valid = tokenize_and_pad_batch(
+            self.split_data.valid_data,
+            gene_ids,
+            max_len=self.max_seq_len,
+            vocab=self.vocab,
+            pad_token=self.pad_token,
+            pad_value=self.pad_value,
+            append_cls=True,  # append <cls> token at the beginning
+            include_zero_gene=include_zero_gene
+        )
+        
+    def _prepare_dataloader(
+            self,
+            data_pt: Dict[str, torch.Tensor],
+            shuffle: bool = False,
+            drop_last: bool = False,
+            num_workers: int = 0,
+            intra_domain_shuffle: bool = False,
+            per_seq_batch_sample: bool = False,
+    ) -> DataLoader:
+        if num_workers == 0:
+            num_workers = min(len(os.sched_getaffinity(0)), self.batch_size // 2)
+
+        dataset = SeqDataset(data_pt)
+
+        if per_seq_batch_sample:
+            # find the indices of samples in each seq batch
+            subsets = []
+            batch_labels_array = data_pt["batch_labels"].numpy()
+            for batch_label in np.unique(batch_labels_array):
+                batch_indices = np.where(batch_labels_array == batch_label)[0].tolist()
+                subsets.append(batch_indices)
+            data_loader = DataLoader(
+                dataset=dataset,
+                batch_sampler=SubsetsBatchSampler(
+                    subsets,
+                    self.batch_size,
+                    intra_subset_shuffle=intra_domain_shuffle,
+                    inter_subset_shuffle=shuffle,
+                    drop_last=drop_last,
+                ),
+                num_workers=num_workers,
+                pin_memory=True,
+            )
+            return data_loader
+
         data_loader = DataLoader(
             dataset=dataset,
-            batch_sampler=SubsetsBatchSampler(
-                subsets,
-                batch_size,
-                intra_subset_shuffle=intra_domain_shuffle,
-                inter_subset_shuffle=shuffle,
-                drop_last=drop_last,
-            ),
+            batch_size=self.batch_size,
+            shuffle=shuffle,
+            drop_last=drop_last,
             num_workers=num_workers,
             pin_memory=True,
         )
         return data_loader
+    
+    # Should be called every epoch, because it randomly selects the genes for each cell
+    def get_train_valid_data_per_epoch(self,
+                                       sort_batches,
+                                       train_dataloader_params_dict,
+                                       test_dataloader_params_dict):
+        # mask_ratio, mask_value, pad_value, sort_seq_batch=False
+        train_data_pt, valid_data_pt = self._prepare_data_for_train(sort_batches)
 
-    data_loader = DataLoader(
-        dataset=dataset,
-        batch_size=batch_size,
-        shuffle=shuffle,
-        drop_last=drop_last,
-        num_workers=num_workers,
-        pin_memory=True,
-    )
-    return data_loader
+        train_loader = self._prepare_dataloader(
+            train_data_pt,
+            **train_dataloader_params_dict 
+        )
+
+        valid_loader = self._prepare_dataloader(
+            valid_data_pt,
+            **test_dataloader_params_dict 
+        )
+        return train_loader, valid_loader
+    
+
+    def get_test_loader(self, include_zero_gene):
+        all_counts = (
+            self.adata_test.layers[INPUT_LAYER].A
+            if issparse(self.adata_test.layers[INPUT_LAYER])
+            else self.adata_test.layers[INPUT_LAYER]
+        )
+
+        celltypes_labels = self.adata_test.obs["celltype_id"].tolist()
+        celltypes_labels = np.array(celltypes_labels)
+
+        batch_ids = self.adata_test.obs["batch_id"].tolist()
+        batch_ids = np.array(batch_ids)
+
+        genes = self.adata_test.var.index.tolist()
+        gene_ids = np.array(self.vocab(genes), dtype=int)
+
+        # Evaluate cls cell embeddings
+        tokenized = tokenize_and_pad_batch(
+            all_counts,
+            gene_ids,
+            max_len=self.max_seq_len,
+            vocab=self.vocab,
+            pad_token=self.pad_token,
+            pad_value=self.pad_value,
+            append_cls=True,  # append <cls> token at the beginning
+            include_zero_gene=include_zero_gene
+        )
+
+    
+        input_values_test = random_mask_value(
+            tokenized["values"],
+            mask_ratio=self.mask_ratio,
+            mask_value=self.mask_value,
+            pad_value=self.pad_value,
+        )
+
+        test_data_pt = {
+            "gene_ids": tokenized["genes"],
+            "values": input_values_test,
+            "target_values": tokenized["values"],
+            "batch_labels": torch.from_numpy(batch_ids).long(),
+            "celltype_labels": torch.from_numpy(celltypes_labels).long(),
+        }
+
+        test_loader = DataLoader(
+            dataset=SeqDataset(test_data_pt),
+            batch_size=self.batch_size,
+            shuffle=False,
+            drop_last=False,
+            num_workers=min(len(os.sched_getaffinity(0)), self.batch_size // 2),
+            pin_memory=True,
+        )
+
+        return test_loader
+
+        
+
+class PertDataloader(ModelDataloader):
+
+    #TODO: get gene_ids and stuff. See how it's done in the other classes.
+    def __init__(self, data_name, vocab, n_input_bins, n_hvg, pad_token, pad_value, batch_size, max_seq_len,
+                         mask_ratio, mask_value):
+        super().__init__(data_name, vocab, pad_token, pad_value, batch_size, max_seq_len,
+                         mask_ratio, mask_value)
+        self.pert_data = PertData("./data")
+        self.pert_data.load(data_name=self.data_name)
+        self.pert_data.prepare_split(split="simulation", seed=1)
+        self.pert_data.get_dataloader(batch_size=batch_size, test_batch_size=batch_size)
+        self.ds_loader = load_ds.get_data_loader(self.data_name)
+        self.ds_loader.load_train_test(self.pert_data)
+    
+    def get_train_valid_data_per_epoch(self,
+                                       sort_batches,
+                                       train_dataloader_params_dict,
+                                       test_dataloader_params_dict):
+        return (
+            self.pert_data.dataloader["train_loader"],
+            self.pert_data.dataloader["val_loader"]
+            )
+    
+    def get_test_loader(self, include_zero_gene):
+        return self.pert_data.dataloader["test_loader"]
+    
+    def prepare_train_and_valid(self, include_zero_gene):
+        return
+    
+    def get_num_genes(self):
+        n_genes = len(self.pert_data.adata.var["gene_name"].tolist())
+        return n_genes
+    
+    def get_num_celltypes(self):
+        return self.ds_loader.get_num_celltypes()
+    
+    def get_num_batches(self):
+        return self.ds_loader.get_num_batches()
+    
+    def get_gene_ids(self):
+        genes = self.pert_data.adata.var["gene_name"].tolist()
+        gene_ids = np.array(
+            [self.vocab[gene] if gene in self.vocab else self.vocab[self.pad_token] for gene in genes],
+            dtype=int
+        )
+        return gene_ids
+    
+    def get_ctrl_condition(self):
+        return self.pert_data.adata[self.pert_data.adata.obs["condition"] == "ctrl"]
+    
+    def get_num_training_steps(self):
+        return len(self.pert_data.dataloader["train_loader"])
 
 def move_optimizer_params_to_cuda(optimizer):
         for group in optimizer.param_groups:
@@ -135,6 +471,7 @@ class ModelLoader():
     class SupportedTasks(Enum):
         CELLTYPE_ANNOTATION = "celltype_annotation"
         BATCH_CORRECTION = "batch_correction"
+        PERTURBATION = "perturbation"
 
     def __init__(self, model_task, small_model=False):
         supported = [task.value for task in ModelLoader.SupportedTasks]
@@ -162,15 +499,22 @@ class ModelLoader():
     
     def get_pad_token(self):
         return self.task_train_dict['pad_token']
-    
-    def get_seq_len(self):
-        return self.model_dict['seq_len']
 
     def get_model(self, model_config_dict):
         if self.model_task == ModelLoader.SupportedTasks.CELLTYPE_ANNOTATION.value:
-            return CellAnnotation(self.task_train_dict.copy(), self.model_dict.copy(), **model_config_dict)
+            return CellAnnotation(task_training_dict=self.task_train_dict.copy(),
+                                  config_dict=self.model_dict.copy(), **model_config_dict,
+                                  n_hvg=self.get_hvg(), n_input_bins=self.task_train_dict['n_input_bins'])
+        
         if self.model_task == ModelLoader.SupportedTasks.BATCH_CORRECTION.value:
-            return BatchCorrection(self.task_train_dict.copy(), self.model_dict.copy(), **model_config_dict)
+            return BatchCorrection(task_training_dict=self.task_train_dict.copy(),
+                                   config_dict=self.model_dict.copy(), **model_config_dict,
+                                   n_hvg=self.get_hvg(), n_input_bins=self.task_train_dict['n_input_bins'])
+        
+        if self.model_task == ModelLoader.SupportedTasks.PERTURBATION.value:
+            return Perturbation(task_training_dict=self.task_train_dict.copy(),
+                                config_dict=self.model_dict.copy(), **model_config_dict,
+                                n_hvg=self.get_hvg(), n_input_bins=self.task_train_dict['n_input_bins'])
         
     
                         
@@ -179,7 +523,7 @@ class ScGPTModelWrapper(ABC):
 
     def __init__(self,
                  task_training_dict, config_dict, model_path,
-                 vocab, num_batches, max_seq_len, delta_config, batch_size, eval_batch_size,
+                 vocab, num_batches, delta_config, batch_size,
                  model_name="awesome_model", log_dir="cell_annotation_logs/", wandb_config=None,):
         self.logger = scgpt.logger
 
@@ -199,15 +543,13 @@ class ScGPTModelWrapper(ABC):
             self.load_model(model_path)
 
         self.vocab = vocab
-        self.vocab.set_default_index(vocab["<pad>"])
         self.pad_token = task_training_dict["pad_token"]
         #self.criterion = nn.CrossEntropyLoss()
         #self.eps = EPS
         self.batch_size = batch_size
-        self.eval_batch_size = eval_batch_size
         self.log_interval = LOG_INTERVAL
         scgpt.utils.add_file_handler(self.logger, log_dir + f"{model_name}.log")
-        self.max_seq_len = max_seq_len
+        #self.max_seq_len = seq_len
         self.model_name = model_name
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
@@ -258,6 +600,18 @@ class ScGPTModelWrapper(ABC):
     def calc_test_metrics(self, test_results_dict):
         pass
 
+    @abstractmethod
+    def init_eval_metrics(self):
+        pass
+
+    @abstractmethod
+    def evaluate_epoch(self):
+        pass
+
+    @abstractmethod
+    def get_val_loss_for_comparison(self, resuls_dict):
+        pass
+
     def test_mode(self):
         self.mask_ratio = 0.0
 
@@ -275,118 +629,6 @@ class ScGPTModelWrapper(ABC):
         model_dict.update(pretrained_dict)
         self.model.load_state_dict(model_dict)
 
-
-    def tokenize_data(self, split_data, gene_ids):
-        tokenized_train = tokenize_and_pad_batch(
-            split_data.train_data,
-            gene_ids,
-            max_len=self.max_seq_len,
-            vocab=self.vocab,
-            pad_token=self.pad_token,
-            pad_value=self.pad_value,
-            append_cls=True,  # append <cls> token at the beginning
-            include_zero_gene=self.include_zero_gene
-        )
-
-        tokenized_valid = tokenize_and_pad_batch(
-            split_data.valid_data,
-            gene_ids,
-            max_len=self.max_seq_len,
-            vocab=self.vocab,
-            pad_token=self.pad_token,
-            pad_value=self.pad_value,
-            append_cls=True,
-            include_zero_gene=self.include_zero_gene
-        )
-
-        return tokenized_train, tokenized_valid
-
-
-
-    def _prepare_data_for_train(self, split_data: TrainTestSplitResults, tokenized_train, tokenized_valid,
-                                sort_seq_batch=False) -> Tuple[Dict[str, torch.Tensor]]:
-
-        input_gene_ids_train, input_gene_ids_valid = (
-            tokenized_train["genes"],
-            tokenized_valid["genes"],
-        )
-
-        masked_values_train = random_mask_value(
-            tokenized_train["values"],
-            mask_ratio=self.mask_ratio,
-            mask_value=self.mask_value,
-            pad_value=self.pad_value,
-        )
-
-        masked_values_valid = random_mask_value(
-            tokenized_valid["values"],
-            mask_ratio=self.mask_ratio,
-            mask_value=self.mask_value,
-            pad_value=self.pad_value,
-        )
-
-        input_values_train, input_values_valid = masked_values_train, masked_values_valid
-        target_values_train, target_values_valid = (
-            tokenized_train["values"],
-            tokenized_valid["values"],
-        )
-
-        tensor_batch_labels_train = torch.from_numpy(split_data.train_batch_labels).long()
-        tensor_batch_labels_valid = torch.from_numpy(split_data.valid_batch_labels).long()
-
-        tensor_celltype_labels_train = torch.from_numpy(split_data.train_celltype_labels).long()
-        tensor_celltype_labels_valid = torch.from_numpy(split_data.valid_celltype_labels).long()
-
-        if sort_seq_batch:
-            train_sort_ids = np.argsort(split_data.train_batch_labels)
-            input_gene_ids_train = input_gene_ids_train[train_sort_ids]
-            input_values_train = input_values_train[train_sort_ids]
-            target_values_train = target_values_train[train_sort_ids]
-            tensor_batch_labels_train = tensor_batch_labels_train[train_sort_ids]
-
-            valid_sort_ids = np.argsort(split_data.valid_batch_labels)
-            input_gene_ids_valid = input_gene_ids_valid[valid_sort_ids]
-            input_values_valid = input_values_valid[valid_sort_ids]
-            target_values_valid = target_values_valid[valid_sort_ids]
-            tensor_batch_labels_valid = tensor_batch_labels_valid[valid_sort_ids]
-
-
-        train_data_pt = {
-            "gene_ids": input_gene_ids_train,
-            "values": input_values_train,
-            "target_values": target_values_train,
-            "batch_labels": tensor_batch_labels_train,
-            "celltype_labels": tensor_celltype_labels_train,
-        }
-        valid_data_pt = {
-            "gene_ids": input_gene_ids_valid,
-            "values": input_values_valid,
-            "target_values": target_values_valid,
-            "batch_labels": tensor_batch_labels_valid,
-            "celltype_labels": tensor_celltype_labels_valid,
-        }
-
-        return train_data_pt, valid_data_pt
-    
-    # Should be called every epoch, because it randomly selects the genes for each cell
-    def _get_train_valid_data_per_epoch(self, split_data: TrainTestSplitResults,
-                                        tokenized_train, tokenized_valid):
-        train_data_pt, valid_data_pt = self._prepare_data_for_train(
-            split_data, tokenized_train, tokenized_valid, sort_seq_batch=self.sort_batches)
-
-        train_loader = prepare_dataloader(
-            train_data_pt,
-            batch_size=self.batch_size,
-            **self.train_dataloader_params_dict 
-        )
-
-        valid_loader = prepare_dataloader(
-            valid_data_pt,
-            batch_size=self.eval_batch_size,
-            **self.test_dataloader_params_dict 
-        )
-        return train_loader, valid_loader
-
     
     def _evaluate(self, loader: DataLoader, return_raw: bool = False, return_embs=False,
                   get_intermediate_outputs=False, get_gene_embs=False, get_attn_maps=False) -> float:
@@ -396,7 +638,6 @@ class ScGPTModelWrapper(ABC):
         self.model.eval()
         total_loss = 0.0
         total_error = 0.0
-        total_num = 0
         predictions = []
         intermediate_embeddings = [[] for _ in range(self.model.nlayers + 1)]
         # avg_attention_maps holds the average attention for each layer across the entire
@@ -406,11 +647,9 @@ class ScGPTModelWrapper(ABC):
         # for each cell in the dataset individually.
         cell_attention_maps = [[] for _ in range(self.model.nlayers)]
         embeddings = []
+        self.init_eval_metrics()
         with torch.no_grad():
             for batch_data in loader:
-                input_gene_ids = batch_data["gene_ids"].to(self.device)
-                total_num += len(input_gene_ids)
-
                 with torch.cuda.amp.autocast(enabled=True):
                     forward_input_dict = self.get_forward_params_for_evaluation(batch_data)
                     forward_input_dict["get_intermediate_outputs"] = get_intermediate_outputs
@@ -449,14 +688,15 @@ class ScGPTModelWrapper(ABC):
                             # get the attention of the <cls>
                             cell_attention_maps[i].append(output[i].cpu().numpy())
                 else:
-                    total_batch_loss, total_batch_error = self.calc_eval_metrics(output, batch_data)
-                    total_loss += total_batch_loss
-                    total_error += total_batch_error
+                    self.calc_eval_metrics(output, batch_data)
+                    #total_loss += total_batch_loss
+                    #total_error += total_batch_error
                     if return_raw:
                         predictions.append(self.get_predictions_from_model_output(output))
                     if return_embs:
                         embeddings.append(output["cell_emb"].cpu().numpy())
 
+        total_num = self.total_num_in_eval
         if get_intermediate_outputs:
             for i in range(len(intermediate_embeddings)):
                 if get_gene_embs:
@@ -485,41 +725,17 @@ class ScGPTModelWrapper(ABC):
         if return_embs:
             eval_dict["embeddings"] = np.concatenate(embeddings, axis=0)
 
-        eval_dict["total_loss"] = total_loss / total_num
-        eval_dict["total_err"] = total_error / total_num
-
+        eval_results = self.evaluate_epoch()
+        eval_dict.update(eval_results)
         return eval_dict
 
 
-    def test(self, adata: DataLoader, intermediate_embeddings_file=None,
+    def test(self, intermediate_embeddings_file=None,
              predictions_file=None, embeddings_file=None, get_gene_embs=False,
              attention_maps_file=None):
         self.include_zero_gene = True
-        celltypes_labels, batch_ids, tokenized_test = self.prepare_data_for_test(adata)
-
-        input_values_test = random_mask_value(
-            tokenized_test["values"],
-            mask_ratio=self.mask_ratio,
-            mask_value=self.mask_value,
-            pad_value=self.pad_value,
-        )
-
-        test_data_pt = {
-            "gene_ids": tokenized_test["genes"],
-            "values": input_values_test,
-            "target_values": tokenized_test["values"],
-            "batch_labels": torch.from_numpy(batch_ids).long(),
-            "celltype_labels": torch.from_numpy(celltypes_labels).long(),
-        }
-
-        test_loader = DataLoader(
-            dataset=SeqDataset(test_data_pt),
-            batch_size=self.batch_size,
-            shuffle=False,
-            drop_last=False,
-            num_workers=min(len(os.sched_getaffinity(0)), self.batch_size // 2),
-            pin_memory=True,
-        )
+        test_loader = self.data_loader.get_test_loader(self.include_zero_gene)
+        adata_test = self.data_loader.ds_loader.get_test_data()
 
         if intermediate_embeddings_file:
             embeddings = self._evaluate(
@@ -528,9 +744,9 @@ class ScGPTModelWrapper(ABC):
                 get_gene_embs=get_gene_embs,
             )
             if get_gene_embs:
-                embeddings_adata = ad.AnnData(obs=adata.var.copy())
+                embeddings_adata = ad.AnnData(obs=adata_test.var.copy())
             else:
-                embeddings_adata = ad.AnnData(obs=adata.obs.copy())
+                embeddings_adata = ad.AnnData(obs=adata_test.obs.copy())
             for i in range(len(embeddings)):
                 embeddings_adata.obsm[f"transformer_layer_{i}"] = embeddings[i]
             embeddings_adata.write_h5ad(intermediate_embeddings_file)
@@ -550,7 +766,7 @@ class ScGPTModelWrapper(ABC):
                 get_intermediate_outputs=False,
                 get_attn_maps=True
             )
-            var_with_cls = adata.var.copy()
+            var_with_cls = adata_test.var.copy()
             if "highly_variable" in var_with_cls:
                 cols_to_drop = ["highly_variable",
                                 "highly_variable_intersection",
@@ -567,7 +783,7 @@ class ScGPTModelWrapper(ABC):
                 avg_attn_file = attention_maps_file + "_avg.h5ad"
                 avg_attn_adata.write_h5ad(avg_attn_file)
             else:
-                cell_attn_adata = ad.AnnData(obs=adata.obs.copy(), var=var_with_cls)
+                cell_attn_adata = ad.AnnData(obs=adata_test.obs.copy(), var=var_with_cls)
                 for i in range(self.model.nlayers):
                     cell_attn_adata.obsm[f"transformer_layer_{i}"] = cell_attn_maps[i]
                 cell_attn_file = attention_maps_file + "_cell.h5ad"
@@ -582,24 +798,27 @@ class ScGPTModelWrapper(ABC):
                                         return_embs=self.need_embeddings)
         
         if self.need_predictions:
-            adata.obs["predictions"] = test_eval_dict["predictions"]
+            adata_test.obs["predictions"] = test_eval_dict["predictions"]
         if self.need_embeddings:
-            adata.obsm["X_scGPT"] = test_eval_dict["embeddings"]
+            adata_test.obsm["X_scGPT"] = test_eval_dict["embeddings"]
+
+        #TODO: clean up this code so it will do something useful
         
         #test_eval_dict["celltype"] = adata.obs["celltype"]
         #test_eval_dict["str_batch"] = adata.obs["str_batch"]
 
-        test_metrics = self.calc_test_metrics(adata)
+        test_metrics = self.calc_test_metrics(adata_test)
         #wandb.log(test_metrics)
 
         if save_predictions or save_embeddings:
-            predictions_df = adata.obs.copy()       
+            predictions_df = adata_test.obs.copy()       
             if save_predictions:
-                predictions_df["predicted_celltype_id"] = test_eval_dict["predictions"]         
+                predictions_df["predicted_celltype_id"] = test_eval_dict["predictions"]   
+            """      
             if save_embeddings:
                 predictions_adata = ad.AnnData(obs=predictions_df)
                 predictions_adata.obsm["X_emb"] = embeddings
-                predictions_adata.write_h5ad(embeddings_file)
+                predictions_adata.write_h5ad(embeddings_file)"""
                     
         return test_metrics
 
@@ -611,7 +830,6 @@ class ScGPTModelWrapper(ABC):
 
         num_batches = len(data_loader)
         for batch, batch_data in enumerate(data_loader):
-            #print(batch_data)
             with torch.cuda.amp.autocast(enabled=True):
                 output_dict = self.model(
                     **self.get_forward_params_for_training(batch_data)
@@ -647,39 +865,15 @@ class ScGPTModelWrapper(ABC):
         return total_loss_in_epoch / num_batches
 
 
-    # Need to be called before training, once
-    def _get_split_data(self, adata):
-        all_counts = (
-            adata.layers[INPUT_LAYER].A
-            if issparse(adata.layers[INPUT_LAYER])
-            else adata.layers[INPUT_LAYER]
-        )
+    def train(self, lr, num_epochs, find_lr=False, warm_up_percentage=0, early_stop=False):
 
-        celltypes_labels = adata.obs["celltype_id"].tolist()  # make sure count from 0
-        celltypes_labels = np.array(celltypes_labels)
-
-        batch_ids = adata.obs["batch_id"].tolist()
-        batch_ids = np.array(batch_ids)
-
-        genes = adata.var.index.tolist()
-        gene_ids = np.array(self.vocab(genes), dtype=int)
-
-        split_data = TrainTestSplitResults(*train_test_split(
-            all_counts, celltypes_labels, batch_ids, test_size=0.1, shuffle=True
-        ))
-        return split_data, gene_ids
-
-
-    def train(self, lr, num_epochs, adata, adata_test, find_lr=False, warm_up_percentage=0, early_stop=False):
-
-        split_data, gene_ids = self._get_split_data(adata)
-        tokenized_train, tokenized_valid = self.tokenize_data(split_data, gene_ids)
+        self.data_loader.prepare_train_and_valid(self.include_zero_gene)
         best_val_loss = float("inf")
 
         optimizer = torch.optim.Adam(
             self.model.parameters(), lr=lr, eps=self.eps
         )
-        steps_in_epoch = np.ceil(len(split_data.train_data) / self.batch_size)
+        steps_in_epoch = self.data_loader.get_num_training_steps()
         if find_lr:
             assert warm_up_percentage == 0, "Warm up epochs are not supported in lr finding mode."
             # If in the lr finding mode.
@@ -704,33 +898,31 @@ class ScGPTModelWrapper(ABC):
         curr_val_loss_avg = np.inf
         for epoch in range(1, num_epochs + 1):
             epoch_start_time = time.time()
-            train_loader, valid_loader = self._get_train_valid_data_per_epoch(
-                split_data, tokenized_train, tokenized_valid)
+            train_loader, valid_loader = self.data_loader.get_train_valid_data_per_epoch(
+                self.sort_batches,
+                self.train_dataloader_params_dict,
+                self.test_dataloader_params_dict
+            )
             epoch_loss = self._train_step(train_loader, optimizer, scheduler, scaler, epoch)
             last_lr = float(scheduler.get_last_lr()[0])
             if find_lr:
                 with open(LR_FINDER_LOG_DIR + self.model_name, 'a') as f:
                     f.write(f"{last_lr} {epoch_loss}\n")
-            eval_dict = self._evaluate(loader=valid_loader)
-            val_loss = eval_dict["total_loss"]
-            val_err = eval_dict["total_err"] 
+            eval_results = self._evaluate(loader=valid_loader)
 
             if not find_lr:
-                test_results = self.test(adata_test)
+                test_results = self.test()
 
                 self.logger.info(
                     f"Test results: {test_results}"
                 )
 
             elapsed = time.time() - epoch_start_time
-            self.logger.info("-" * 89)
-            self.logger.info(
-                f"| end of epoch {epoch:3d} | time: {elapsed:5.2f}s | "
-                f"valid loss/mse {val_loss:5.4f} | err {val_err:5.4f}"
-            )
-            self.logger.info("-" * 89)
+            self.log_epoch(epoch, elapsed, eval_results)
 
             # Early stopping mechanism
+            # get the loss used for comparing performance of model epochs.
+            val_loss = self.get_val_loss_for_comparison(eval_results)
             prev_val_loss_avg = curr_val_loss_avg
             last_val_losses[(epoch - 1) % EARLY_STOPPING_EPOCHS_AVG] = val_loss
             curr_val_loss_avg = np.sum(last_val_losses) / np.minimum(EARLY_STOPPING_EPOCHS_AVG, epoch)
@@ -773,39 +965,6 @@ class ScGPTModelWrapper(ABC):
                     "lr": last_lr,
                 }
             )"""
-
-    def prepare_data_for_test(self, adata):
-        all_counts = (
-            adata.layers[INPUT_LAYER].A
-            if issparse(adata.layers[INPUT_LAYER])
-            else adata.layers[INPUT_LAYER]
-        )
-
-        celltypes_labels = adata.obs["celltype_id"].tolist()
-        celltypes_labels = np.array(celltypes_labels)
-
-        batch_ids = adata.obs["batch_id"].tolist()
-        batch_ids = np.array(batch_ids)
-
-        genes = adata.var.index.tolist()
-        gene_ids = np.array(self.vocab(genes), dtype=int)
-
-        # Evaluate cls cell embeddings
-        self.logger.info("Evaluating cls cell embeddings")
-        tokenized_all = tokenize_and_pad_batch(
-            all_counts,
-            gene_ids,
-            max_len=self.max_seq_len,
-            vocab=self.vocab,
-            pad_token=self.pad_token,
-            pad_value=self.pad_value,
-            append_cls=True,  # append <cls> token at the beginning
-            include_zero_gene=self.include_zero_gene
-        )
-        print("max len:", self.max_seq_len)
-        print("after tokenized:", tokenized_all['genes'].shape)
-
-        return celltypes_labels, batch_ids, tokenized_all
 
 
     ####################################################################################################################
@@ -917,12 +1076,23 @@ class CellAnnotation(ScGPTModelWrapper):
                  task_training_dict,
                  config_dict,
                  model_path,
-                 vocab, num_batches, num_celltypes, max_seq_len,
-                 delta_config, batch_size, eval_batch_size,
+                 vocab,
+                 delta_config, batch_size,
+                 n_input_bins, n_hvg, data_name,
                  model_name="awesome_model",
                  log_dir="cell_annotation_logs/", wandb_config=None):
         
-        config_dict["n_cls"] = num_celltypes
+        seq_len = config_dict["seq_len"]
+        self.data_loader = SimpleDataloader(data_name, vocab, n_input_bins, n_hvg,
+                                            pad_token=task_training_dict["pad_token"],
+                                            pad_value=task_training_dict["pad_value"],
+                                            batch_size=batch_size,
+                                            max_seq_len=seq_len,
+                                            model_task="celltype_annotation",
+                                            mask_ratio=task_training_dict["mask_ratio"],
+                                            mask_value=task_training_dict["mask_value"])
+        config_dict["n_cls"] = self.data_loader.get_num_celltypes()
+        num_batches = self.data_loader.get_num_batches()
         
         super().__init__(
                          task_training_dict=task_training_dict,
@@ -930,14 +1100,12 @@ class CellAnnotation(ScGPTModelWrapper):
                          model_path=model_path,
                          vocab=vocab, 
                          num_batches=num_batches,
-                         max_seq_len=max_seq_len,
                          delta_config=delta_config, 
-                         batch_size=batch_size,
-                         eval_batch_size=eval_batch_size,
                          log_dir=log_dir,
                          model_name=model_name,
                          wandb_config=wandb_config,
-                        )
+                         batch_size=batch_size
+        )
 
         self.criterion = nn.CrossEntropyLoss()
         self.eps = 1e-8
@@ -995,6 +1163,11 @@ class CellAnnotation(ScGPTModelWrapper):
         self.total_error = 0.0
         self.start_time = time.time()
         self.total_loss_in_epoch = 0.0
+        
+    def init_eval_metrics(self):
+        self.eval_loss = 0.0
+        self.eval_err = 0.0
+        self.total_num_in_eval = 0
 
     def get_loss_for_batch(self, output_dict: dict, batch_data: dict) -> float:
         metrics_to_log = {}
@@ -1034,16 +1207,34 @@ class CellAnnotation(ScGPTModelWrapper):
         self.total_error = 0
         self.start_time = time.time()
     
-    def calc_eval_metrics(self, output, batch_data) -> tuple[float, float]:
+    def calc_eval_metrics(self, output, batch_data):
         output_values = output["cls_output"]
         celltype_labels = batch_data["celltype_labels"].to(self.device)
         input_gene_ids = batch_data["gene_ids"].to(self.device)
         loss = self.criterion(output_values, celltype_labels)
-        total_loss = loss.item() * len(input_gene_ids)
+        self.eval_loss += loss.item() * len(input_gene_ids)
         accuracy = (output_values.argmax(1) == celltype_labels).sum().item()
-        total_error = (1 - accuracy / len(input_gene_ids)) * len(input_gene_ids)
+        self.eval_err += (1 - accuracy / len(input_gene_ids)) * len(input_gene_ids)
+        self.total_num_in_eval += len(input_gene_ids)
 
-        return total_loss, total_error
+    def evaluate_epoch(self):
+        results = {}
+        results["total_loss"] = self.eval_loss / self.total_num_in_eval
+        results["total_err"] = self.eval_err / self.total_num_in_eval
+        # the values should reset with a call to init_eval_metrics()
+        return results
+    
+    def log_epoch(self, epoch, elapsed, eval_results):
+        self.logger.info("-" * 89)
+        self.logger.info(
+            f"| end of epoch {epoch:3d} | time: {elapsed:5.2f}s | "
+            f"valid loss/mse {eval_results['total_loss']:5.4f} | err {eval_results['total_err']:5.4f}"
+        )
+        self.logger.info("-" * 89)
+
+    def get_val_loss_for_comparison(self, resuls_dict):
+        return resuls_dict["total_loss"]
+
     
     def get_predictions_from_model_output(self, output):
         output_values = output["cls_output"]
@@ -1076,10 +1267,23 @@ class CellAnnotation(ScGPTModelWrapper):
 class BatchCorrection(ScGPTModelWrapper):
 
     def __init__(self, task_training_dict, config_dict, model_path, vocab, 
-                 num_batches, delta_config, batch_size, eval_batch_size, max_seq_len,
+                 delta_config, batch_size,
+                 n_hvg, n_input_bins, data_name,
                  model_name="awesome_model",
-                 log_dir="cell_annotation_logs/", wandb_config=None, num_celltypes=0):
-        
+                 log_dir="cell_annotation_logs/", wandb_config=None):
+        print("data name:", data_name)        
+        seq_len = config_dict["seq_len"]
+        self.data_loader = SimpleDataloader(data_name, vocab, n_input_bins, n_hvg,
+                                            pad_token=task_training_dict["pad_token"],
+                                            pad_value=task_training_dict["pad_value"],
+                                            batch_size=batch_size,
+                                            max_seq_len=seq_len,
+                                            model_task="batch_correction",
+                                            mask_ratio=task_training_dict["mask_ratio"],
+                                            mask_value=task_training_dict["mask_value"])
+        config_dict["n_cls"] = self.data_loader.get_num_celltypes()
+        num_batches = self.data_loader.get_num_batches()
+   
         super().__init__(
                          task_training_dict=task_training_dict,
                          config_dict=config_dict,
@@ -1088,11 +1292,9 @@ class BatchCorrection(ScGPTModelWrapper):
                          num_batches=num_batches,
                          delta_config=delta_config,
                          batch_size=batch_size,
-                         eval_batch_size=eval_batch_size, 
                          log_dir=log_dir,
                          model_name=model_name, 
                          wandb_config=wandb_config,
-                         max_seq_len=max_seq_len,
                          )
 
         # Different functions for logging purposes
@@ -1135,16 +1337,6 @@ class BatchCorrection(ScGPTModelWrapper):
                 # Domain specific batch norm
         for param in self.model.dsbn.parameters():
             param.requires_grad = True
-        #for param in self.model.cls_decoder.parameters():
-        #    param.requires_grad = True
-        #for param in self.model.transformer_encoder.parameters():
-        #    param.requires_grad = True
-        #for param in self.model.decoder.parameters():
-        #    param.requires_grad = True
-        #for param in self.model.encoder.parameters():
-        #    param.requires_grad = True
-        #for param in self.model.value_encoder.parameters():
-        #    param.requires_grad = True
 
     def add_delta_method(self, delta_model_config: dict, wandb_config: dict):
         if delta_model_config["delta_method"] == "classifier":
@@ -1262,15 +1454,6 @@ class BatchCorrection(ScGPTModelWrapper):
 
     def calc_test_metrics(self, adata):
         adata_t = adata.copy()
-        """
-        cell_embeddings = test_results_dict["embeddings"]
-        cell_embeddings = cell_embeddings / np.linalg.norm(
-            cell_embeddings, axis=1, keepdims=True
-        )
-        adata = ad.AnnData()
-        adata.obs["celltype"] = test_results_dict["celltype"]
-        adata.obs["str_batch"] = test_results_dict["str_batch"]
-        adata.obsm["X_scGPT"] = cell_embeddings"""
         
         results = {}
         try:
@@ -1278,36 +1461,13 @@ class BatchCorrection(ScGPTModelWrapper):
         except Exception as e:
             traceback.print_exc()
             self.logger.error(e)
-        """
-        sc.pp.neighbors(adata_t, use_rep="X_scGPT")
-        sc.tl.umap(adata_t, min_dist=0.3)
-        fig = sc.pl.umap(
-            adata_t,
-            color=["str_batch"],
-            title=[f"batch, avg_bio = {results.get('avg_bio', 0.0):.4f}"],
-            frameon=False,
-            return_fig=True,
-            show=False,
-        )
-
-        results["batch_umap"] = wandb.Image(fig)
-
-        sc.pp.neighbors(adata_t, use_rep="X_scGPT")
-        sc.tl.umap(adata_t, min_dist=0.3)
-        fig = sc.pl.umap(
-            adata_t,
-            color=["celltype"],
-            title=[
-                f"celltype, avg_bio = {results.get('avg_bio', 0.0):.4f}",
-            ],
-            frameon=False,
-            return_fig=True,
-            show=False,
-        )
-
-        results["celltype_umap"] = wandb.Image(fig)"""
 
         return results
+    
+    def init_eval_metrics(self):
+        self.eval_loss = 0.0
+        self.eval_err = 0.0
+        self.total_num_in_eval = 0
     
     def calc_eval_metrics(self, output, batch_data) -> tuple[float, float]:
         input_gene_ids = batch_data["gene_ids"].to(self.device)
@@ -1322,8 +1482,242 @@ class BatchCorrection(ScGPTModelWrapper):
         error = masked_relative_error(
                 output_values, target_values, masked_positions
             ).item() * len(input_gene_ids)
-        return loss, error
+        self.eval_loss += loss
+        self.eval_err += error
+        self.total_num_in_eval += len(input_gene_ids)
 
+    def log_epoch(self, epoch, elapsed, eval_results):
+        self.logger.info("-" * 89)
+        self.logger.info(
+            f"| end of epoch {epoch:3d} | time: {elapsed:5.2f}s | "
+            f"valid loss/mse {eval_results['total_loss']:5.4f} | err {eval_results['total_err']:5.4f}"
+        )
+        self.logger.info("-" * 89)
 
+    def evaluate_epoch(self):
+        results = {}
+        results["total_loss"] = self.eval_loss / self.total_num_in_eval
+        results["total_err"] = self.eval_err / self.total_num_in_eval
+        # the values should reset with a call to init_eval_metrics()
+        return results
+
+    def get_val_loss_for_comparison(self, resuls_dict):
+        return resuls_dict["total_loss"]
+
+    def get_predictions_from_model_output(self, output):
+        return np.arange(10)
+    
+
+class Perturbation(ScGPTModelWrapper):
+
+    def __init__(self, task_training_dict, config_dict, model_path, vocab, 
+                 delta_config, batch_size,
+                 n_hvg, n_input_bins, data_name,
+                 model_name="awesome_model",
+                 log_dir="cell_annotation_logs/", wandb_config=None):
+        print("data name:", data_name)        
+        seq_len = config_dict["seq_len"]
+        self.data_loader = PertDataloader(data_name, vocab, n_input_bins, n_hvg,
+                                            pad_token=task_training_dict["pad_token"],
+                                            pad_value=task_training_dict["pad_value"],
+                                            batch_size=batch_size,
+                                            max_seq_len=seq_len,
+                                            mask_ratio=task_training_dict["mask_ratio"],
+                                            mask_value=task_training_dict["mask_value"])
+        config_dict["n_cls"] = self.data_loader.get_num_celltypes()
+        num_batches = self.data_loader.get_num_batches()
+        self.n_genes = self.data_loader.get_num_genes()
+        self.sort_batches = False
+   
+        super().__init__(
+                         task_training_dict=task_training_dict,
+                         config_dict=config_dict,
+                         model_path=model_path,
+                         vocab=vocab, 
+                         num_batches=num_batches,
+                         delta_config=delta_config,
+                         batch_size=batch_size,
+                         log_dir=log_dir,
+                         model_name=model_name, 
+                         wandb_config=wandb_config
+                         )
+        self.eps = 1e-8
+        self.train_dataloader_params_dict = {}
+        self.test_dataloader_params_dict = {}
+        self.max_seq_len = seq_len
+        self.criterion = masked_mse_loss
+        self.input_gene_ids_for_batch = None
+        self.input_gene_ids_for_eval = None
+        
+    def init_loss(self):
+        self.total_loss = 0.0
+        self.start_time = time.time()
+        self.total_loss_in_epoch = 0.0
+
+    def get_forward_params_for_training(self, batch_data):
+        batch_data.to(self.device)
+        x: torch.Tensor = batch_data.x  # (batch_size * n_genes, 2)
+        ori_gene_values = x[:, 0].view(self.batch_size, self.n_genes)
+        pert_flags = x[:, 1].long().view(self.batch_size, self.n_genes)
+
+        self.input_gene_ids_for_batch = torch.arange(self.n_genes, device=self.device, dtype=torch.long)
+        if len(self.input_gene_ids_for_batch) > self.max_seq_len:
+            self.input_gene_ids_for_batch = torch.randperm(len(self.input_gene_ids_for_batch), device=self.device)[
+                :self.max_seq_len
+            ]
+        input_values = ori_gene_values[:, self.input_gene_ids_for_batch]
+        input_pert_flags = pert_flags[:, self.input_gene_ids_for_batch]
+
+        gene_ids = self.data_loader.get_gene_ids()
+        mapped_input_gene_ids = map_raw_id_to_vocab_id(self.input_gene_ids_for_batch, gene_ids)
+        mapped_input_gene_ids = mapped_input_gene_ids.repeat(self.batch_size, 1)
+
+        # src_key_padding_mask = mapped_input_gene_ids.eq(vocab[pad_token])
+        src_key_padding_mask = torch.zeros_like(
+            input_values, dtype=torch.bool, device=self.device
+        )
+
+        training_dict = {
+            "input_ids": mapped_input_gene_ids,
+            "inputs_embeds": input_values,
+            "input_pert_flags": input_pert_flags,
+            "src_key_padding_mask": src_key_padding_mask,
+        }
+
+        return training_dict
+    
+    def get_loss_for_batch(self, output_dict, batch_data):
+        target_gene_values = batch_data.y  # (batch_size, n_genes)
+        target_values = target_gene_values[:, self.input_gene_ids_for_batch]
+        #input_gene_ids = torch.arange(self.n_genes, device=self.device, dtype=torch.long)
+        output_values = output_dict["mlm_output"]
+        x: torch.Tensor = batch_data.x  # (batch_size * n_genes, 2)
+        ori_gene_values = x[:, 0].view(self.batch_size, self.n_genes)
+        input_values = ori_gene_values[:, self.input_gene_ids_for_batch]
+        masked_positions = torch.ones_like(
+                input_values, dtype=torch.bool, device=self.device
+            )  # Use all
+        loss = self.criterion(output_values, target_values, masked_positions)
+
+        return loss
+    
+    def update_loss(self, loss) -> float:
+        self.total_loss += loss
+        self.total_loss_in_epoch += loss
+
+        return self.total_loss_in_epoch
+    
+    def log_training(self, lr, epoch, batch, num_batches):
+        ms_per_batch = (time.time() - self.start_time) * 1000 / self.log_interval
+        cur_loss = self.total_loss / self.log_interval
+        
+        self.logger.info(
+            f"| epoch {epoch:3d} | {batch:3d}/{num_batches:3d} batches | "
+            f"lr {lr:05.8f} | ms/batch {ms_per_batch:5.2f} | "
+            f"loss {cur_loss:5.2f} | "
+        )     
+        self.total_loss = 0
+        self.start_time = time.time()
+
+    def get_forward_params_for_evaluation(self, batch):
+        batch.to(self.device)
+        batch_size = len(batch.pert)
+        x: torch.Tensor = batch.x
+        ori_gene_values = x[:, 0].view(batch_size, -1)  # (batch_size, n_genes)
+        pert_flags = x[:, 1].long().view(batch_size, -1)
+        gene_ids = self.data_loader.get_gene_ids()
+        assert gene_ids is not None
+        input_gene_ids = torch.arange(ori_gene_values.size(1), device=self.device)
+        self.input_gene_ids_for_eval = torch.arange(self.n_genes, device=self.device, dtype=torch.long)
+        if len(self.input_gene_ids_for_eval) > self.max_seq_len:
+            self.input_gene_ids_for_eval = torch.randperm(len(self.input_gene_ids_for_eval), device=self.device)[
+                :self.max_seq_len
+            ]
+        input_values = ori_gene_values[:, self.input_gene_ids_for_eval]
+        input_pert_flags = pert_flags[:, self.input_gene_ids_for_eval]
+
+        mapped_input_gene_ids = map_raw_id_to_vocab_id(self.input_gene_ids_for_eval, gene_ids)
+        mapped_input_gene_ids = self.input_gene_ids_for_eval.repeat(batch_size, 1)
+
+        src_key_padding_mask = torch.zeros_like(
+            input_values, dtype=torch.bool, device=self.device
+        )
+
+        eval_params_dict = {
+            "input_ids": mapped_input_gene_ids,
+            "inputs_embeds": input_values,
+            "input_pert_flags": input_pert_flags,
+            "src_key_padding_mask": src_key_padding_mask,
+            "do_sample": True
+        }
+
+        return eval_params_dict
+    
+    def init_eval_metrics(self):
+        self.pert_cat = []
+        self.pred = []
+        self.truth = []
+        self.pred_de = []
+        self.truth_de = []
+        self.total_num_in_eval = 0
+    
+    # This is called at the end of batch
+    def calc_eval_metrics(self, output, batch) -> tuple[float, float]:
+        output_values = output["mlm_output"].float()
+        batch_size = len(batch.pert)
+        ori_gene_values = batch.x[:, 0].view(batch_size, -1)
+        pred_gene_values = torch.zeros_like(ori_gene_values)
+        pred_gene_values[:, self.input_gene_ids_for_eval] = output_values
+        t = batch.y
+        self.pred.extend(pred_gene_values.cpu())
+        self.truth.extend(t.cpu())
+        self.pert_cat.extend(batch.pert)
+
+        # Differentially expressed genes
+        for itr, de_idx in enumerate(batch.de_idx):
+            self.pred_de.append(pred_gene_values[itr, de_idx])
+            self.truth_de.append(t[itr, de_idx])
+
+        #output_dict_like = {
+        #    "mlm_output": output
+        #}
+        self.total_num_in_eval += batch.x.shape[0]
+    
+    # this is called at the end of every epoch
+    def evaluate_epoch(self):
+        results = {}
+        results["pert_cat"] = np.array(self.pert_cat)
+        self.pred = torch.stack(self.pred)
+        self.truth = torch.stack(self.truth)
+        results["pred"] = self.pred.detach().cpu().numpy().astype(float)
+        results["truth"] = self.truth.detach().cpu().numpy().astype(float)
+
+        self.pred_de = torch.stack(self.pred_de)
+        self.truth_de = torch.stack(self.truth_de)
+        results["pred_de"] = self.pred_de.detach().cpu().numpy().astype(float)
+        results["truth_de"] = self.truth_de.detach().cpu().numpy().astype(float)
+
+        val_metrics = compute_perturbation_metrics(
+            results, self.data_loader.get_ctrl_condition()
+        )
+
+        return val_metrics
+
+    def log_epoch(self, epoch, elapsed, eval_results):
+        self.logger.info("-" * 89)
+        self.logger.info(
+            f"| end of epoch {epoch:3d} | time: {elapsed:5.2f}s | "
+        )
+        self.logger.info(eval_results)
+        self.logger.info("-" * 89)
+
+    def calc_test_metrics(self, adata):
+        return "All Good!"
+
+    def get_val_loss_for_comparison(self, resuls_dict):
+        # The metric taken to evaluate the model is pearson correlation - 
+        # the higher the better, so we return the negative value as loss.
+        return -resuls_dict["pearson"]
+    
     def get_predictions_from_model_output(self, output):
         return np.arange(10)
