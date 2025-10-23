@@ -1,0 +1,19 @@
+{
+    
+    "dropout": 0.2,
+    "do_mvc": true,
+    "do_dab": false,
+    "use_batch_labels": false,
+    "domain_spec_batchnorm": false,
+    "cell_emb_style": "cls",
+    "ecs_threshold": 0.8,
+    "explicit_zero_prob": true,
+    "pre_norm": false,
+    "pad_token": "<pad>",
+    "input_emb_style": "continuous",
+    "n_input_bins": 51,
+    "pad_value": -2,
+
+    "mask_ratio": 0.4,
+    "mask_value": -1
+}

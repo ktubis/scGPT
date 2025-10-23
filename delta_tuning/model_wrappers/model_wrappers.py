@@ -470,6 +470,7 @@ class ModelLoader():
     class SupportedTasks(Enum):
         CELLTYPE_ANNOTATION = "celltype_annotation"
         BATCH_CORRECTION = "batch_correction"
+        GE_PREDICTION = "ge_prediction"
         PERTURBATION = "perturbation"
 
     def __init__(self, model_task, small_model=False):
@@ -512,6 +513,11 @@ class ModelLoader():
         
         if self.model_task == ModelLoader.SupportedTasks.PERTURBATION.value:
             return Perturbation(task_training_dict=self.task_train_dict.copy(),
+                                config_dict=self.model_dict.copy(), **model_config_dict,
+                                n_hvg=self.get_hvg(), n_input_bins=self.task_train_dict['n_input_bins'])
+        
+        if self.model_task == ModelLoader.SupportedTasks.GE_PREDICTION.value:
+            return GEPrediction(task_training_dict=self.task_train_dict.copy(),
                                 config_dict=self.model_dict.copy(), **model_config_dict,
                                 n_hvg=self.get_hvg(), n_input_bins=self.task_train_dict['n_input_bins'])
         
@@ -1432,6 +1438,223 @@ class BatchCorrection(ScGPTModelWrapper):
             self.logger.error(e)
 
         return results
+    
+    def init_eval_metrics(self):
+        self.eval_loss = 0.0
+        self.eval_err = 0.0
+        self.total_num_in_eval = 0
+    
+    def calc_eval_metrics(self, output, batch_data) -> tuple[float, float]:
+        input_gene_ids = batch_data["gene_ids"].to(self.device)
+        target_values = batch_data["target_values"].to(self.device)
+        input_values = batch_data["values"].to(self.device)
+        masked_positions = input_values.eq(self.mask_value)
+
+        output_values = output["mlm_output"]
+        loss = self.criterion(
+            output_values, target_values, masked_positions
+            ).item() * len(input_gene_ids)
+        error = masked_relative_error(
+                output_values, target_values, masked_positions
+            ).item() * len(input_gene_ids)
+        self.eval_loss += loss
+        self.eval_err += error
+        self.total_num_in_eval += len(input_gene_ids)
+
+    def log_epoch(self, epoch, elapsed, eval_results):
+        self.logger.info("-" * 89)
+        self.logger.info(
+            f"| end of epoch {epoch:3d} | time: {elapsed:5.2f}s | "
+            f"valid loss/mse {eval_results['total_loss']:5.4f} | err {eval_results['total_err']:5.4f}"
+        )
+        self.logger.info("-" * 89)
+
+    def evaluate_epoch(self):
+        results = {}
+        results["total_loss"] = self.eval_loss / self.total_num_in_eval
+        results["total_err"] = self.eval_err / self.total_num_in_eval
+        # the values should reset with a call to init_eval_metrics()
+        return results
+
+    def get_val_loss_for_comparison(self, resuls_dict):
+        return resuls_dict["total_loss"]
+
+    def get_predictions_from_model_output(self, output):
+        return np.arange(10)
+    
+
+class GEPrediction(ScGPTModelWrapper):
+    def __init__(self, task_training_dict, config_dict, model_path, vocab, 
+                 delta_config, batch_size,
+                 n_hvg, n_input_bins, data_name,
+                 model_name="awesome_model",
+                 log_dir="cell_annotation_logs/", wandb_config=None):
+        print("data name:", data_name)        
+        seq_len = config_dict["seq_len"]
+        self.data_loader = SimpleDataloader(data_name, vocab, n_input_bins, n_hvg,
+                                            pad_token=task_training_dict["pad_token"],
+                                            pad_value=task_training_dict["pad_value"],
+                                            batch_size=batch_size,
+                                            max_seq_len=seq_len,
+                                            model_task="ge_prediction",
+                                            mask_ratio=task_training_dict["mask_ratio"],
+                                            mask_value=task_training_dict["mask_value"])
+        config_dict["n_cls"] = self.data_loader.get_num_celltypes()
+        num_batches = self.data_loader.get_num_batches()
+   
+        super().__init__(
+                         task_training_dict=task_training_dict,
+                         config_dict=config_dict,
+                         model_path=model_path,
+                         vocab=vocab, 
+                         num_batches=num_batches,
+                         delta_config=delta_config,
+                         batch_size=batch_size,
+                         log_dir=log_dir,
+                         model_name=model_name, 
+                         wandb_config=wandb_config,
+                         )
+
+        # Different functions for logging purposes
+        self.criterion = masked_mse_loss
+        self.criterion_neg_log_bernoulli = criterion_neg_log_bernoulli
+
+        self.eps = 1e-4
+        self.include_zero_gene = True
+        self.need_embeddings = True
+
+        self.train_dataloader_params_dict = {
+            'shuffle': False,
+            'drop_last': False,
+            'intra_domain_shuffle': True,
+            'per_seq_batch_sample': False
+        }
+        self.test_dataloader_params_dict = {
+            'shuffle': False,
+            'drop_last': False,
+            'intra_domain_shuffle': False,
+            'per_seq_batch_sample': False
+        }
+
+        self.training_config_dict = {
+            'batch_labels': None,
+            'CLS': False
+        }
+
+    def unfreeze_prediction_heads(self):
+        # Decoder for the masked value prediction for cell embeddings.
+        for param in self.model.mvc_decoder.parameters():
+            param.requires_grad = True
+
+    def add_delta_method(self, delta_model_config: dict, wandb_config: dict):
+        if delta_model_config["delta_method"] == "classifier":
+            print("Delta type is 'classifier', finetuning the classifier decoder.")
+            wandb_config["delta_method"] = "classifier"
+            self.freeze_all_modules()
+        else:
+            super().add_delta_method(delta_model_config, wandb_config)
+        self.unfreeze_prediction_heads()
+        self.model.get_trainable_parameters()
+
+    def get_forward_params_for_training(self, batch_data):
+        input_gene_ids = batch_data["gene_ids"].to(self.device)
+        input_values = batch_data["values"].to(self.device)
+
+        src_key_padding_mask = input_gene_ids.eq(self.vocab[self.pad_token])
+
+        forward_input_dict = {
+            "input_ids": input_gene_ids,
+            "inputs_embeds": input_values,
+            "src_key_padding_mask": src_key_padding_mask,
+            "MVC": True,
+            "ECS": True,
+        }
+
+        return forward_input_dict
+    
+    def get_forward_params_for_evaluation(self, batch_data):
+        eval_input_dict = self.get_forward_params_for_training(batch_data)
+        eval_input_dict["MVC"] = False
+        eval_input_dict["ECS"] = False
+        return eval_input_dict
+
+    def init_loss(self):
+        self.start_time = time.time()            
+        self.total_loss_in_epoch = 0.0
+        self.metrics_lo_log = {}
+        self.losses_dict = {
+            "mse": 0.0,
+            "gepc": 0.0,
+            "error": 0.0,
+            "total": 0.0
+        }
+
+    def get_loss_for_batch(self, output_dict: dict, batch_data: dict) -> float:
+        input_values = batch_data["values"].to(self.device)
+        target_values = batch_data["target_values"].to(self.device)
+        masked_positions = input_values.eq(self.mask_value)  # the postions to predict
+
+        loss = loss_mse = self.criterion(
+            output_dict["mlm_output"], target_values, masked_positions
+        )
+        self.losses_dict["mse"] += loss.item()
+        metrics_to_log = {"train/mse": loss_mse.item()}
+        loss_zero_log_prob = self.criterion_neg_log_bernoulli(
+            output_dict["mlm_zero_probs"], target_values, masked_positions
+        )
+        loss = loss + loss_zero_log_prob
+        metrics_to_log.update({"train/nzlp": loss_zero_log_prob.item()})
+        loss_gepc = self.criterion(
+            output_dict["mvc_output"], target_values, masked_positions
+        )
+        self.losses_dict["gepc"] += loss_gepc.item()
+        loss = loss + loss_gepc
+        metrics_to_log.update({"train/mvc": loss_gepc.item()})
+
+        loss_gepc_zero_log_prob = self.criterion_neg_log_bernoulli(
+            output_dict["mvc_zero_probs"], target_values, masked_positions
+        )
+        loss = loss + loss_gepc_zero_log_prob
+        metrics_to_log.update(
+            {"train/mvc_nzlp": loss_gepc_zero_log_prob.item()}
+        )
+        loss_ecs = 10 * output_dict["loss_ecs"]
+        loss = loss + loss_ecs
+        metrics_to_log.update({"train/ecs": loss_ecs.item()})
+        self.losses_dict["total"] += loss
+
+        with torch.no_grad():
+            mre = masked_relative_error(
+                output_dict["mlm_output"], target_values, masked_positions
+            )
+        self.losses_dict["error"] += mre.item()
+        
+        return loss
+
+
+    def update_loss(self, loss) -> float:
+        self.total_loss_in_epoch += loss
+        return self.total_loss_in_epoch
+
+    def log_training(self, lr, epoch, batch, num_batches):
+        ms_per_batch = (time.time() - self.start_time) * 1000 / self.log_interval
+        cur_loss = self.losses_dict["total"] / self.log_interval
+        cur_mse = self.losses_dict["mse"] / self.log_interval
+        cur_gepc = self.losses_dict["gepc"] / self.log_interval
+        cur_error = self.losses_dict["error"] / self.log_interval
+        self.logger.info(
+            f"| epoch {epoch:3d} | {batch:3d}/{num_batches:3d} batches | "
+            f"lr {lr:05.8f} | ms/batch {ms_per_batch:5.2f} | "
+            f"loss {cur_loss:5.2f} | mse {cur_mse:5.2f} | mre {cur_error:5.2f} |"
+            + (f"gepc {cur_gepc:5.2f} |")
+        )
+        self.start_time = time.time()
+        for key in self.losses_dict.keys():
+            self.losses_dict[key] = 0.0
+        
+
+    def calc_test_metrics(self, adata):
+        return "All Good!"
     
     def init_eval_metrics(self):
         self.eval_loss = 0.0
