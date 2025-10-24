@@ -1896,8 +1896,9 @@ class Perturbation(ScGPTModelWrapper):
         )
 
         truth_tensor = torch.as_tensor(results["truth"], device=self.device)
+        pred_tensor = torch.as_tensor(results["pred"], device=self.device)
         masked_positions = torch.ones_like(truth_tensor, dtype=torch.bool)
-        loss = self.criterion(results["pred"], results["truth"], masked_positions)
+        loss = self.criterion(pred_tensor, truth_tensor, masked_positions)
         val_metrics["mse"] = loss
 
         return val_metrics
