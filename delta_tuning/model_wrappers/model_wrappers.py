@@ -1895,6 +1895,12 @@ class Perturbation(ScGPTModelWrapper):
             results, self.data_loader.get_ctrl_condition()
         )
 
+        masked_positions = torch.ones_like(
+                results["truth"], dtype=torch.bool, device=self.device
+            )  # Use all
+        loss = self.criterion(results["pred"], results["truth"], masked_positions)
+        val_metrics["mse"] = loss
+
         return val_metrics
 
     def log_epoch(self, epoch, elapsed, eval_results):
