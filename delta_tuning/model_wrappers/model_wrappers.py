@@ -411,11 +411,12 @@ class PertDataloader(ModelDataloader):
                          mask_ratio, mask_value):
         super().__init__(data_name, vocab, pad_token, pad_value, batch_size, max_seq_len,
                          mask_ratio, mask_value)
+        self.ds_loader = load_ds.get_data_loader(self.data_name)
+        data_path = self.ds_loader.get_data_path()
         self.pert_data = PertData("./data")
-        self.pert_data.load(data_name=self.data_name)
+        self.pert_data.load(data_path=data_path)
         self.pert_data.prepare_split(split="simulation", seed=1)
         self.pert_data.get_dataloader(batch_size=batch_size, test_batch_size=batch_size)
-        self.ds_loader = load_ds.get_data_loader(self.data_name)
         self.ds_loader.load_train_test(self.pert_data)
     
     def get_train_valid_data_per_epoch(self,
@@ -489,10 +490,10 @@ class ModelLoader():
             self.model_dict = json.load(f)
 
     def get_hvg(self):
-        if self.model_task == ModelLoader.SupportedTasks.CELLTYPE_ANNOTATION.value:
-            return self.model_dict['seq_len']
         if self.model_task == ModelLoader.SupportedTasks.BATCH_CORRECTION.value:
             return self.model_dict['seq_len'] - 1
+        else:
+            return self.model_dict['seq_len']
     
     def get_input_bins(self):
         return self.task_train_dict['n_input_bins']
@@ -1521,6 +1522,7 @@ class GEPrediction(ScGPTModelWrapper):
 
         self.eps = 1e-4
         self.include_zero_gene = True
+        self.sort_batches = False
         self.need_embeddings = True
 
         self.train_dataloader_params_dict = {

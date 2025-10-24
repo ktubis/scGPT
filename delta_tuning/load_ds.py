@@ -74,9 +74,9 @@ def get_data_loader(ds_name):
     if ds_name == SupportedDatasets.KIM_LUNG.value:
         return KimLung()
     if ds_name == SupportedDatasets.NORMAN.value:
-        return PerturbationDataLoader()
+        return PerturbationDataLoader(ds_name)
     if ds_name == SupportedDatasets.ADAMSON.value:
-        return PerturbationDataLoader()
+        return PerturbationDataLoader(ds_name)
     raise ValueError("Invalid dataset name. Supported names are: ",
                      [ds.value for ds in SupportedDatasets])
 
@@ -150,8 +150,15 @@ class BatchCorrectionDataLoader(DataLoader):
         return self.train_data"""
 
 class PerturbationDataLoader(DataLoader):
-    def __init__(self):
+    def __init__(self, ds_name):
         super().__init__()
+        self.ds_name = ds_name
+
+    def get_data_path(self):
+        if self.ds_name == "norman":
+            return "data/norman/"
+        if self.ds_name == "adamson":
+            return "data/adamson/"
 
     def load_train_test(self, pert_data):
         train_perts = set([d.pert for d in pert_data.dataloader['train_loader'].dataset])
