@@ -104,13 +104,36 @@ def add_tokens_to_vocab(pad_token, vocab):
             vocab.append_token(s)"""
 
 
-def hyperparameter_search(task_model, num_epochs, adata_train, adata_test, trial, lr, warm_up_percentage, batch_size, logger):
-    split_data, gene_ids = task_model._get_split_data(adata_train)
+def hyperparameter_search(task_model, num_epochs, trial, lr, warm_up_percentage, batch_size, logger):
+
+
+    move_optimizer_params_to_cuda(optimizer)
+    scaler = torch.cuda.amp.GradScaler(enabled=True)
+
+    # for early stopping
+    early_stopping_counter = 0
+    prev_epoch_loss = np.inf
+    curr_val_loss_avg = np.inf
+    for epoch in range(1, num_epochs + 1):
+        train_loader, valid_loader = task_model.data_loader.get_train_valid_data_per_epoch(
+            task_model.sort_batches,
+            task_model.train_dataloader_params_dict,
+            task_model.test_dataloader_params_dict
+        )
+        epoch_loss = task_model._train_step(train_loader, optimizer, scheduler, scaler, epoch)
+        last_lr = float(scheduler.get_last_lr()[0])
+        eval_results = task_model._evaluate(loader=valid_loader)
+
+        prev_epoch_loss = epoch_loss
+################################################################################
+
+    task_model.data_loader.prepare_train_and_valid(task_model.include_zero_gene)
     optimizer = torch.optim.Adam(
         task_model.model.parameters(), lr=lr, eps=task_model.eps
     )
     move_optimizer_params_to_cuda(optimizer)
-    num_training_steps = num_epochs * np.ceil(len(split_data.train_data) / batch_size)
+    steps_in_epoch = task_model.data_loader.get_num_training_steps()
+    num_training_steps = num_epochs * steps_in_epoch
     warm_up_steps = (warm_up_percentage / 100.) * num_training_steps
     scheduler = get_linear_schedule_with_warmup(
                 optimizer,
@@ -122,21 +145,21 @@ def hyperparameter_search(task_model, num_epochs, adata_train, adata_test, trial
     assert num_epochs > 0, "num_epochs must be greater than 0"
     best_eval_loss = np.inf
     prev_eval_loss = np.inf
-    tokenized_train, tokenized_valid = task_model.tokenize_data(split_data, gene_ids)
 
     for epoch in range(1, num_epochs + 1):
-        train_loader, valid_loader = task_model._get_train_valid_data_per_epoch(
-            split_data, tokenized_train, tokenized_valid)
+        train_loader, valid_loader = task_model.data_loader.get_train_valid_data_per_epoch(
+            task_model.sort_batches,
+            task_model.train_dataloader_params_dict,
+            task_model.test_dataloader_params_dict
+        )
         epoch_loss = task_model._train_step(train_loader, optimizer, scheduler, scaler, epoch)
         eval_dict = task_model._evaluate(valid_loader)
-        eval_loss = eval_dict['total_loss']
+        eval_loss = task_model.get_val_loss_for_comparison(eval_dict)
         if eval_loss < best_eval_loss:
             best_eval_loss = eval_loss
-            torch.save(task_model.model.state_dict(), "retrained_models/" + task_model.model_name + '.pth')
         if eval_loss > prev_eval_loss:
             bad_epochs_counter += 1
         prev_eval_loss = eval_loss
-        #test_results = task_model.test(adata_test)
         trial.report(eval_loss, step=epoch)
 
         #TODO: do the logging inside the test function
@@ -149,17 +172,6 @@ def hyperparameter_search(task_model, num_epochs, adata_train, adata_test, trial
             #f"f1: {f1_score:.4f} | "
             f"lr: {scheduler.get_last_lr()[0]:.4e}"
         )
-        """
-        wandb.log(
-            {
-                "epoch": epoch,
-                "train_loss": epoch_loss,
-                "eval_loss": eval_loss,
-                "best_eval_loss": best_eval_loss,
-                "f1_score": f1_score,
-                "lr": scheduler.get_last_lr()[0],
-            }
-        )"""
                 
         # Return if the model doesn't improve for a certain number of epochs
         if bad_epochs_counter >= OPTUNA_PRUNING_EPOCHS:
@@ -179,7 +191,7 @@ def update_model_config(model_config, hyperparams):
     model_config["lr"] = hyperparams["lr"]
     return model_config
 
-def find_hyperparams(model_loader, model_init_params, adata_train, adata_test, delta_config,
+def find_hyperparams(model_loader, model_init_params, delta_config,
                      hyperparam_search_config, wandb_config, logger):
     def optuna_objective(trial):
         min_lr = hyperparam_search_config["min_lr"]
@@ -210,13 +222,13 @@ def find_hyperparams(model_loader, model_init_params, adata_train, adata_test, d
         #add_delta_method.add_delta_method(cam, delta_config, wandb_config)
 
         #wandb.watch(task_model.model, log="all", log_graph=True)
-        return hyperparameter_search(task_model, num_epochs, adata_train, adata_test, trial, lr=lr,
+        return hyperparameter_search(task_model, num_epochs, trial, lr=lr,
                                      warm_up_percentage=warm_up_percentage,
                                      batch_size=model_init_params["batch_size"],
                                      logger=logger)
     return optuna_objective
 
-def run_optuna_hyperparam_search(model_loader, model_init_params, adata_train, adata_test, delta_config,
+def run_optuna_hyperparam_search(model_loader, model_init_params, delta_config,
                                  wandb_config, hyperparam_search_config_file, logger):
         os.makedirs(OPTUNA_LOGS_DIR, exist_ok=True)
         name_log_file = f"optuna_trials_{wandb_config['model_name']}_delta_method_{delta_config['delta_method']}.log"
@@ -238,7 +250,7 @@ def run_optuna_hyperparam_search(model_loader, model_init_params, adata_train, a
         study = optuna.create_study(direction="minimize")
         with open(hyperparam_search_config_file, 'r') as f:
             hyperparam_search_config = json.load(f)
-        objective = find_hyperparams(model_loader, model_init_params, adata_train, adata_test, delta_config,
+        objective = find_hyperparams(model_loader, model_init_params, delta_config,
                                      hyperparam_search_config, wandb_config, logger)
         n_trials = hyperparam_search_config["n_trials"]
         study.optimize(objective, n_trials=n_trials)
