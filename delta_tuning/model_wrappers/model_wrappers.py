@@ -1199,7 +1199,7 @@ class CellAnnotation(ScGPTModelWrapper):
         results["total_err"] = self.eval_err / self.total_num_in_eval
         # the values should reset with a call to init_eval_metrics()
         return results
-    
+
     def log_epoch(self, epoch, elapsed, eval_results):
         self.logger.info("-" * 89)
         self.logger.info(
@@ -1895,9 +1895,8 @@ class Perturbation(ScGPTModelWrapper):
             results, self.data_loader.get_ctrl_condition()
         )
 
-        masked_positions = torch.ones_like(
-                results["truth"], dtype=torch.bool, device=self.device
-            )  # Use all
+        truth_tensor = torch.as_tensor(results["truth"], device=self.device)
+        masked_positions = torch.ones_like(truth_tensor, dtype=torch.bool)
         loss = self.criterion(results["pred"], results["truth"], masked_positions)
         val_metrics["mse"] = loss
 
