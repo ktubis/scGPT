@@ -1831,7 +1831,8 @@ class Perturbation(ScGPTModelWrapper):
         input_pert_flags = pert_flags[:, self.input_gene_ids_for_eval]
 
         mapped_input_gene_ids = map_raw_id_to_vocab_id(self.input_gene_ids_for_eval, gene_ids)
-        mapped_input_gene_ids = self.input_gene_ids_for_eval.repeat(batch_size, 1)
+        #mapped_input_gene_ids = self.input_gene_ids_for_eval.repeat(batch_size, 1)
+        mapped_input_gene_ids = mapped_input_gene_ids.repeat(batch_size, 1)
 
         src_key_padding_mask = torch.zeros_like(
             input_values, dtype=torch.bool, device=self.device
@@ -1872,9 +1873,6 @@ class Perturbation(ScGPTModelWrapper):
             self.pred_de.append(pred_gene_values[itr, de_idx])
             self.truth_de.append(t[itr, de_idx])
 
-        #output_dict_like = {
-        #    "mlm_output": output
-        #}
         self.total_num_in_eval += batch.x.shape[0]
     
     # this is called at the end of every epoch
