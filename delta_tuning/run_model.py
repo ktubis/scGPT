@@ -394,16 +394,20 @@ def main():
                 "embeddings_file": embeddings_file,
                 "predictions_file": predictions_file,
             }
+            if args.celltype_list:
+                cell_list = "_".join(args.celltype_list)
+                test_kwargs["celltype_list"] = cell_list
             if args.get_intermediate_outputs:
                 intermediate_embeddings_file = f"intermediate_embeddings/{model_name}_{args.train_data}_{args.seed}"
                 if args.get_gene_embs:
                     intermediate_embeddings_file += "_genes"
                     if args.celltype_list:
-                        cell_list = "_".join(args.celltype_list)
                         intermediate_embeddings_file += ("_" + cell_list)
                 test_kwargs["intermediate_embeddings_file"] = intermediate_embeddings_file
             if args.attention_maps:
                 attention_maps_file = f"attention_maps/{model_name}_{args.train_data}_{args.seed}"
+                if args.celltype_list:
+                    attention_maps_file += ("_" + cell_list)
                 test_kwargs["attention_maps_file"] = attention_maps_file
 
             test_kwargs['get_gene_embs'] = args.get_gene_embs
