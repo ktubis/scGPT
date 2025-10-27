@@ -347,9 +347,7 @@ class SimpleDataloader(ModelDataloader):
         return train_loader, valid_loader
     
 
-    def get_test_loader(self, include_zero_gene, celltype_list=[]):
-        if celltype_list:
-            self.adata_test = self.adata_test[self.adata_test.obs["celltype"].isin(celltype_list)]
+    def get_test_loader(self, include_zero_gene):
         all_counts = (
             self.adata_test.layers[INPUT_LAYER].A
             if issparse(self.adata_test.layers[INPUT_LAYER])
@@ -704,7 +702,8 @@ class ScGPTModelWrapper(ABC):
                     if return_embs:
                         embeddings.append(output["cell_emb"].cpu().numpy())
 
-        total_num = self.total_num_in_eval
+                total_num += len(batch_data["gene_ids"].to(self.device))
+
         if get_intermediate_outputs:
             for i in range(len(intermediate_embeddings)):
                 if get_gene_embs:
@@ -740,11 +739,10 @@ class ScGPTModelWrapper(ABC):
 
     def test(self, intermediate_embeddings_file=None,
              predictions_file=None, embeddings_file=None, get_gene_embs=False,
-             attention_maps_file=None,
-             celltype_list=[]):
+             attention_maps_file=None):
         self.include_zero_gene = True
-        test_loader = self.data_loader.get_test_loader(self.include_zero_gene, celltype_list)
-        adata_test = self.data_loader.adata_test
+        test_loader = self.data_loader.get_test_loader(self.include_zero_gene)
+        adata_test = self.data_loader.ds_loader.get_test_data()
 
         if intermediate_embeddings_file:
             embeddings = self._evaluate(
@@ -1313,7 +1311,7 @@ class BatchCorrection(ScGPTModelWrapper):
         # Decoder for the masked value prediction for cell embeddings.
         for param in self.model.mvc_decoder.parameters():
             param.requires_grad = True
-                # Domain specific batch norm
+        # Domain specific batch norm
         for param in self.model.dsbn.parameters():
             param.requires_grad = True
 
