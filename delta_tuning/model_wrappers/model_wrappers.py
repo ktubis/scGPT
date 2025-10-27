@@ -654,6 +654,7 @@ class ScGPTModelWrapper(ABC):
         cell_attention_maps = [[] for _ in range(self.model.nlayers)]
         embeddings = []
         self.init_eval_metrics()
+        total_num = 0
         with torch.no_grad():
             for batch_data in loader:
                 with torch.cuda.amp.autocast(enabled=True):
