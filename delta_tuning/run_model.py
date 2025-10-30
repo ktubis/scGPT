@@ -397,7 +397,7 @@ def main():
             if args.celltype_list:
                 celltype_list = [s.replace(' ', '_') for s in args.celltype_list]
                 cell_list = "_".join(celltype_list)
-                test_kwargs["celltype_list"] = celltype_list
+                test_kwargs["celltype_list"] = args.celltype_list
             if args.get_intermediate_outputs:
                 intermediate_embeddings_file = f"intermediate_embeddings/{model_name}_{args.train_data}_{args.seed}"
                 if args.get_gene_embs:
