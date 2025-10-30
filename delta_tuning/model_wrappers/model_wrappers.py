@@ -347,7 +347,9 @@ class SimpleDataloader(ModelDataloader):
         return train_loader, valid_loader
     
 
-    def get_test_loader(self, include_zero_gene):
+    def get_test_loader(self, include_zero_gene, celltype_list = []):
+        if celltype_list:
+            self.adata_test = self.adata_test[self.adata_test.obs["celltype"].isin(celltype_list)]
         all_counts = (
             self.adata_test.layers[INPUT_LAYER].A
             if issparse(self.adata_test.layers[INPUT_LAYER])
@@ -742,11 +744,8 @@ class ScGPTModelWrapper(ABC):
              predictions_file=None, embeddings_file=None, get_gene_embs=False,
              attention_maps_file=None, celltype_list=[]):
         self.include_zero_gene = True
-        test_loader = self.data_loader.get_test_loader(self.include_zero_gene)
+        test_loader = self.data_loader.get_test_loader(self.include_zero_gene, celltype_list)
         adata_test = self.data_loader.adata_test
-
-        if celltype_list:
-            adata_test = adata_test[adata_test.obs["celltype"].isin(celltype_list)]
 
         if intermediate_embeddings_file:
             embeddings = self._evaluate(
