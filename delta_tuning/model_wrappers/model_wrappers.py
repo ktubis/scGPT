@@ -743,7 +743,7 @@ class ScGPTModelWrapper(ABC):
              attention_maps_file=None, celltype_list=[]):
         self.include_zero_gene = True
         test_loader = self.data_loader.get_test_loader(self.include_zero_gene)
-        adata_test = self.data_loader.ds_loader.get_test_data()
+        adata_test = self.data_loader.adata_test
 
         if celltype_list:
             adata_test = adata_test[adata_test.obs["celltype"].isin(celltype_list)]
