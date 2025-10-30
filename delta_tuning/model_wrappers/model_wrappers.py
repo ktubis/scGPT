@@ -740,10 +740,13 @@ class ScGPTModelWrapper(ABC):
 
     def test(self, intermediate_embeddings_file=None,
              predictions_file=None, embeddings_file=None, get_gene_embs=False,
-             attention_maps_file=None):
+             attention_maps_file=None, celltype_list=[]):
         self.include_zero_gene = True
         test_loader = self.data_loader.get_test_loader(self.include_zero_gene)
         adata_test = self.data_loader.ds_loader.get_test_data()
+
+        if celltype_list:
+            adata_test = adata_test[adata_test.obs["celltype"].isin(celltype_list)]
 
         if intermediate_embeddings_file:
             embeddings = self._evaluate(
