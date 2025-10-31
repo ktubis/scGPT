@@ -413,7 +413,8 @@ def main():
 
             test_kwargs['get_gene_embs'] = args.get_gene_embs
             #adata_test = ds_loader.get_test_data(args.celltype_list)
-            task_model.test(**test_kwargs)
+            test_metrics = task_model.test(**test_kwargs)
+            print(test_metrics)
     print("HERE")
     exit(0)
 
