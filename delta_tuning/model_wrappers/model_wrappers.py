@@ -806,12 +806,14 @@ class ScGPTModelWrapper(ABC):
         test_eval_dict = self._evaluate(loader=test_loader,
                                         return_raw=self.need_predictions,
                                         return_embs=self.need_embeddings)
-        print(test_eval_dict)
         
         if self.need_predictions:
             adata_test.obs["predictions"] = test_eval_dict["predictions"]
         if self.need_embeddings:
             adata_test.obsm["X_scGPT"] = test_eval_dict["embeddings"]
+
+        if embeddings_file:
+            adata_test.write_h5ad(embeddings_file)
 
         #TODO: clean up this code so it will do something useful
         
