@@ -475,6 +475,8 @@ class ModelLoader():
         BATCH_CORRECTION = "batch_correction"
         GE_PREDICTION = "ge_prediction"
         PERTURBATION = "perturbation"
+        GE_PREDICTION_FROM_CLS = "ge_prediction_from_cls"
+        GE_PREDICTION_FROM_GENES = "ge_prediction_from_genes"
 
     def __init__(self, model_task, small_model=False):
         supported = [task.value for task in ModelLoader.SupportedTasks]
@@ -521,6 +523,16 @@ class ModelLoader():
         
         if self.model_task == ModelLoader.SupportedTasks.GE_PREDICTION.value:
             return GEPrediction(task_training_dict=self.task_train_dict.copy(),
+                                config_dict=self.model_dict.copy(), **model_config_dict,
+                                n_hvg=self.get_hvg(), n_input_bins=self.task_train_dict['n_input_bins'])
+        
+        if self.model_task == ModelLoader.SupportedTasks.GE_PREDICTION_FROM_CLS.value:
+            return GEPredictionFromCLS(task_training_dict=self.task_train_dict.copy(),
+                                config_dict=self.model_dict.copy(), **model_config_dict,
+                                n_hvg=self.get_hvg(), n_input_bins=self.task_train_dict['n_input_bins'])
+        
+        if self.model_task == ModelLoader.SupportedTasks.GE_PREDICTION_FROM_GENES.value:
+            return GEPredictionFromGenes(task_training_dict=self.task_train_dict.copy(),
                                 config_dict=self.model_dict.copy(), **model_config_dict,
                                 n_hvg=self.get_hvg(), n_input_bins=self.task_train_dict['n_input_bins'])
         
@@ -639,7 +651,8 @@ class ScGPTModelWrapper(ABC):
 
     
     def _evaluate(self, loader: DataLoader, return_raw: bool = False, return_embs=False,
-                  get_intermediate_outputs=False, get_gene_embs=False, get_attn_maps=False) -> float:
+                  get_intermediate_outputs=False, get_gene_embs=False, get_attn_maps=False,
+                  print_eval_results=False) -> float:
         """
         Evaluate the model on the evaluation data.
         """
@@ -736,6 +749,8 @@ class ScGPTModelWrapper(ABC):
             eval_dict["embeddings"] = np.concatenate(embeddings, axis=0)
 
         eval_results = self.evaluate_epoch()
+        if print_eval_results:
+            self.logger.info(eval_results)
         eval_dict.update(eval_results)
         return eval_dict
 
@@ -803,10 +818,12 @@ class ScGPTModelWrapper(ABC):
         save_predictions = predictions_file and self.need_predictions
         save_embeddings = embeddings_file and self.need_embeddings
 
+        print("TESTING")
         test_eval_dict = self._evaluate(loader=test_loader,
                                         return_raw=self.need_predictions,
-                                        return_embs=self.need_embeddings)
-        
+                                        return_embs=self.need_embeddings,
+                                        print_eval_results=True)
+                
         if self.need_predictions:
             adata_test.obs["predictions"] = test_eval_dict["predictions"]
         if self.need_embeddings:
@@ -1504,7 +1521,7 @@ class GEPrediction(ScGPTModelWrapper):
                                             pad_value=task_training_dict["pad_value"],
                                             batch_size=batch_size,
                                             max_seq_len=seq_len,
-                                            model_task="ge_prediction",
+                                            model_task=self.get_model_task(),
                                             mask_ratio=task_training_dict["mask_ratio"],
                                             mask_value=task_training_dict["mask_value"])
         config_dict["n_cls"] = self.data_loader.get_num_celltypes()
@@ -1550,9 +1567,14 @@ class GEPrediction(ScGPTModelWrapper):
             'CLS': False
         }
 
+    def get_model_task(self):
+        return "ge_prediction"
+
     def unfreeze_prediction_heads(self):
         # Decoder for the masked value prediction for cell embeddings.
         for param in self.model.mvc_decoder.parameters():
+            param.requires_grad = True
+        for param in self.model.decoder.parameters():
             param.requires_grad = True
 
     def add_delta_method(self, delta_model_config: dict, wandb_config: dict):
@@ -1583,7 +1605,7 @@ class GEPrediction(ScGPTModelWrapper):
     
     def get_forward_params_for_evaluation(self, batch_data):
         eval_input_dict = self.get_forward_params_for_training(batch_data)
-        eval_input_dict["MVC"] = False
+        eval_input_dict["MVC"] = True
         eval_input_dict["ECS"] = False
         return eval_input_dict
 
@@ -1661,7 +1683,6 @@ class GEPrediction(ScGPTModelWrapper):
         for key in self.losses_dict.keys():
             self.losses_dict[key] = 0.0
         
-
     def calc_test_metrics(self, adata):
         return "All Good!"
     
@@ -1675,13 +1696,28 @@ class GEPrediction(ScGPTModelWrapper):
         target_values = batch_data["target_values"].to(self.device)
         input_values = batch_data["values"].to(self.device)
         masked_positions = input_values.eq(self.mask_value)
-
-        output_values = output["mlm_output"]
+        
         loss = self.criterion(
-            output_values, target_values, masked_positions
-            ).item() * len(input_gene_ids)
+            output["mlm_output"], target_values, masked_positions
+        ).item() * len(input_gene_ids)
+
+        loss_zero_log_prob = self.criterion_neg_log_bernoulli(
+            output["mlm_zero_probs"], target_values, masked_positions
+        ).item() * len(input_gene_ids)
+        loss = loss + loss_zero_log_prob
+
+        loss_gepc = self.criterion(
+            output["mvc_output"], target_values, masked_positions
+        ).item() * len(input_gene_ids)
+        loss = loss + loss_gepc
+
+        loss_gepc_zero_log_prob = self.criterion_neg_log_bernoulli(
+            output["mvc_zero_probs"], target_values, masked_positions
+        ).item() * len(input_gene_ids)
+        loss = loss + loss_gepc_zero_log_prob
+
         error = masked_relative_error(
-                output_values, target_values, masked_positions
+                output, target_values, masked_positions
             ).item() * len(input_gene_ids)
         self.eval_loss += loss
         self.eval_err += error
@@ -1707,7 +1743,237 @@ class GEPrediction(ScGPTModelWrapper):
 
     def get_predictions_from_model_output(self, output):
         return np.arange(10)
+
+
+class GEPredictionFromCLS(GEPrediction):
+    def __init__(self, task_training_dict, config_dict, model_path, vocab, 
+                 delta_config, batch_size,
+                 n_hvg, n_input_bins, data_name,
+                 model_name="awesome_model",
+                 log_dir="cell_annotation_logs/", wandb_config=None):
+        super().__init__(task_training_dict, config_dict, model_path, vocab, 
+                         delta_config, batch_size,
+                         n_hvg, n_input_bins, data_name,
+                         model_name, log_dir, wandb_config)
+
+    def get_model_task(self):
+        return "ge_prediction_from_cls"
+
+    def unfreeze_prediction_heads(self):
+        # Decoder for the masked value prediction for cell embeddings.
+        for param in self.model.mvc_decoder.parameters():
+            param.requires_grad = True
     
+    def get_forward_params_for_training(self, batch_data):
+        input_gene_ids = batch_data["gene_ids"].to(self.device)
+        input_values = batch_data["values"].to(self.device)
+
+        src_key_padding_mask = input_gene_ids.eq(self.vocab[self.pad_token])
+
+        forward_input_dict = {
+            "input_ids": input_gene_ids,
+            "inputs_embeds": input_values,
+            "src_key_padding_mask": src_key_padding_mask,
+            "MVC": True,
+            "ECS": False,
+        }
+
+        return forward_input_dict
+    
+    def calc_test_metrics(self, adata):
+        return "All Good!"
+    
+    def init_loss(self):
+        self.start_time = time.time()            
+        self.total_loss_in_epoch = 0.0
+        self.metrics_lo_log = {}
+        self.losses_dict = {
+            "mse": 0.0,
+            "error": 0.0,
+            "total": 0.0
+        }
+
+    def get_loss_for_batch(self, output_dict: dict, batch_data: dict) -> float:
+        input_values = batch_data["values"].to(self.device)
+        target_values = batch_data["target_values"].to(self.device)
+        masked_positions = input_values.eq(self.mask_value)  # the postions to predict
+    
+        loss = self.criterion(
+            output_dict["mvc_output"], target_values, masked_positions
+        )
+        self.losses_dict["mse"] += loss.item()
+        metrics_to_log = {"train/mse": loss.item()}
+        metrics_to_log.update({"train/mvc": loss.item()})
+
+        loss_gepc_zero_log_prob = self.criterion_neg_log_bernoulli(
+            output_dict["mvc_zero_probs"], target_values, masked_positions
+        )
+        loss = loss + loss_gepc_zero_log_prob
+        metrics_to_log.update(
+            {"train/mvc_nzlp": loss_gepc_zero_log_prob.item()}
+        )
+        
+        self.losses_dict["total"] += loss
+
+        with torch.no_grad():
+            mre = masked_relative_error(
+                output_dict["mvc_output"], target_values, masked_positions
+            )
+        self.losses_dict["error"] += mre.item()
+        
+        return loss
+    
+    def calc_eval_metrics(self, output, batch_data) -> tuple[float, float]:
+        input_gene_ids = batch_data["gene_ids"].to(self.device)
+        target_values = batch_data["target_values"].to(self.device)
+        input_values = batch_data["values"].to(self.device)
+        masked_positions = input_values.eq(self.mask_value)
+
+        loss = self.criterion(
+            output["mvc_output"], target_values, masked_positions
+        ).item() * len(input_gene_ids)
+
+        loss_gepc_zero_log_prob = self.criterion_neg_log_bernoulli(
+            output["mvc_zero_probs"], target_values, masked_positions
+        ).item() * len(input_gene_ids)
+        loss = loss + loss_gepc_zero_log_prob
+
+        error = masked_relative_error(
+                output["mvc_output"], target_values, masked_positions
+            ).item() * len(input_gene_ids)
+        self.eval_loss += loss
+        self.eval_err += error
+        self.total_num_in_eval += len(input_gene_ids)
+
+    def log_training(self, lr, epoch, batch, num_batches):
+        ms_per_batch = (time.time() - self.start_time) * 1000 / self.log_interval
+        cur_loss = self.losses_dict["total"] / self.log_interval
+        cur_mse = self.losses_dict["mse"] / self.log_interval
+        cur_error = self.losses_dict["error"] / self.log_interval
+        self.logger.info(
+            f"| epoch {epoch:3d} | {batch:3d}/{num_batches:3d} batches | "
+            f"lr {lr:05.8f} | ms/batch {ms_per_batch:5.2f} | "
+            f"loss {cur_loss:5.2f} | mse {cur_mse:5.2f} | mre {cur_error:5.2f}")
+        self.start_time = time.time()
+        for key in self.losses_dict.keys():
+            self.losses_dict[key] = 0.0
+    
+
+class GEPredictionFromGenes(GEPrediction):
+    def __init__(self, task_training_dict, config_dict, model_path, vocab, 
+                 delta_config, batch_size,
+                 n_hvg, n_input_bins, data_name,
+                 model_name="awesome_model",
+                 log_dir="cell_annotation_logs/", wandb_config=None):
+        super().__init__(task_training_dict, config_dict, model_path, vocab, 
+                         delta_config, batch_size,
+                         n_hvg, n_input_bins, data_name,
+                         model_name, log_dir, wandb_config)
+
+    def get_model_task(self):
+        return "ge_prediction_from_genes"
+
+    def unfreeze_prediction_heads(self):
+        # Decoder for the masked value prediction for cell embeddings.
+        for param in self.model.decoder.parameters():
+            param.requires_grad = True
+    
+    def get_forward_params_for_training(self, batch_data):
+        input_gene_ids = batch_data["gene_ids"].to(self.device)
+        input_values = batch_data["values"].to(self.device)
+
+        src_key_padding_mask = input_gene_ids.eq(self.vocab[self.pad_token])
+
+        forward_input_dict = {
+            "input_ids": input_gene_ids,
+            "inputs_embeds": input_values,
+            "src_key_padding_mask": src_key_padding_mask,
+            "MVC": False,
+            "ECS": False,
+        }
+
+        return forward_input_dict
+    
+    def get_forward_params_for_evaluation(self, batch_data):
+        eval_input_dict = self.get_forward_params_for_training(batch_data)
+        eval_input_dict["MVC"] = False
+        eval_input_dict["ECS"] = False
+        return eval_input_dict
+    
+    def calc_test_metrics(self, adata):
+        return "All Good!"
+    
+    def init_loss(self):
+        self.start_time = time.time()            
+        self.total_loss_in_epoch = 0.0
+        self.metrics_lo_log = {}
+        self.losses_dict = {
+            "mse": 0.0,
+            "error": 0.0,
+            "total": 0.0
+        }
+
+    def get_loss_for_batch(self, output_dict: dict, batch_data: dict) -> float:
+        input_values = batch_data["values"].to(self.device)
+        target_values = batch_data["target_values"].to(self.device)
+        masked_positions = input_values.eq(self.mask_value)  # the postions to predict
+
+        loss = loss_mse = self.criterion(
+            output_dict["mlm_output"], target_values, masked_positions
+        )
+        self.losses_dict["mse"] += loss.item()
+        metrics_to_log = {"train/mse": loss_mse.item()}
+        loss_zero_log_prob = self.criterion_neg_log_bernoulli(
+            output_dict["mlm_zero_probs"], target_values, masked_positions
+        )
+        loss = loss + loss_zero_log_prob
+        self.losses_dict["total"] += loss
+
+        with torch.no_grad():
+            mre = masked_relative_error(
+                output_dict["mlm_output"], target_values, masked_positions
+            )
+        self.losses_dict["error"] += mre.item()
+        
+        return loss
+
+    def calc_eval_metrics(self, output, batch_data) -> tuple[float, float]:
+        input_gene_ids = batch_data["gene_ids"].to(self.device)
+        target_values = batch_data["target_values"].to(self.device)
+        input_values = batch_data["values"].to(self.device)
+        masked_positions = input_values.eq(self.mask_value)
+        
+        loss = self.criterion(
+            output["mlm_output"], target_values, masked_positions
+        ).item() * len(input_gene_ids)
+
+        loss_zero_log_prob = self.criterion_neg_log_bernoulli(
+            output["mlm_zero_probs"], target_values, masked_positions
+        ).item() * len(input_gene_ids)
+        loss = loss + loss_zero_log_prob
+
+        error = masked_relative_error(
+                output["mlm_output"], target_values, masked_positions
+            ).item() * len(input_gene_ids)
+        self.eval_loss += loss
+        self.eval_err += error
+        self.total_num_in_eval += len(input_gene_ids)
+
+    def log_training(self, lr, epoch, batch, num_batches):
+        ms_per_batch = (time.time() - self.start_time) * 1000 / self.log_interval
+        cur_loss = self.losses_dict["total"] / self.log_interval
+        cur_mse = self.losses_dict["mse"] / self.log_interval
+        cur_error = self.losses_dict["error"] / self.log_interval
+        self.logger.info(
+            f"| epoch {epoch:3d} | {batch:3d}/{num_batches:3d} batches | "
+            f"lr {lr:05.8f} | ms/batch {ms_per_batch:5.2f} | "
+            f"loss {cur_loss:5.2f} | mse {cur_mse:5.2f} | mre {cur_error:5.2f}")
+        self.start_time = time.time()
+        for key in self.losses_dict.keys():
+            self.losses_dict[key] = 0.0
+    
+
+
 
 class Perturbation(ScGPTModelWrapper):
 
