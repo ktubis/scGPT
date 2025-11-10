@@ -926,6 +926,7 @@ class ScGPTModelWrapper(ABC):
         early_stopping_counter = 0
         prev_epoch_loss = np.inf
         curr_val_loss_avg = np.inf
+        min_val_loss = np.inf
         for epoch in range(1, num_epochs + 1):
             epoch_start_time = time.time()
             train_loader, valid_loader = self.data_loader.get_train_valid_data_per_epoch(
@@ -950,24 +951,10 @@ class ScGPTModelWrapper(ABC):
             elapsed = time.time() - epoch_start_time
             self.log_epoch(epoch, elapsed, eval_results)
 
-            # Early stopping mechanism
             # get the loss used for comparing performance of model epochs.
             val_loss = self.get_val_loss_for_comparison(eval_results)
-            prev_val_loss_avg = curr_val_loss_avg
-            last_val_losses[(epoch - 1) % EARLY_STOPPING_EPOCHS_AVG] = val_loss
-            curr_val_loss_avg = np.sum(last_val_losses) / np.minimum(EARLY_STOPPING_EPOCHS_AVG, epoch)
-            if curr_val_loss_avg >= prev_val_loss_avg:
-                early_stopping_counter += 1
-            else:
-                early_stopping_counter = 0
-            if early_stop and early_stopping_counter >= EARLY_STOPPING_PATIENCE:
-                # return the value for optuna hyperparameter search
-                self.logger.info(
-                    f"Early stopping at epoch {epoch} with score {curr_val_loss_avg:5.4f}"
-                )
-                return
 
-            if find_lr and (val_loss > prev_val_loss_avg):
+            if find_lr and (val_loss > best_val_loss * 1.1):
                 with open(LR_FINDER_LOG_DIR + self.model_name, 'r') as f:
                     lines = f.readlines()
                 lrs = []
@@ -979,12 +966,21 @@ class ScGPTModelWrapper(ABC):
                 plt.plot(lrs, losses)
                 plt.savefig(LR_FINDER_LOG_DIR + self.model_name)
                 return
-            prev_epoch_loss = epoch_loss
 
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
+                early_stopping_counter = 0
                 self.logger.info(f"Best model with score {best_val_loss:5.4f}")
                 torch.save(self.model.state_dict(), RETRAINED_MODELS_DIR + self.model_name + '.pth')
+            else:
+                early_stopping_counter += 1
+            
+            if early_stopping_counter >= EARLY_STOPPING_PATIENCE:
+                # return the value for optuna hyperparameter search
+                self.logger.info(
+                    f"Early stopping at epoch {epoch} with score {curr_val_loss_avg:5.4f}"
+                )
+                return
             """
             wandb.log(
                 {
